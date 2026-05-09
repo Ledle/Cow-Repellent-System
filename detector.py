@@ -10,6 +10,8 @@ class Detector:
     def __init__(self, model_name: str, video_source: str):
         self.model=YOLO(model_name)
         self.source=video_source
+        self.current_image = None
+        self.current_boxes = set()
 
     def track(self):  
         return self.model.track(self.source, show=False, stream=True, persist=True)
