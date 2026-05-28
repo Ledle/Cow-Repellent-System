@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Stream Canvas</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #111;
+            font-family: sans-serif;
+        }
+        canvas {
+            border: 2px solid #444;
+            max-width: 100%;
+            max-height: 100%;
+            background: #000;
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #0f0;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Подключение...</div>
+    <canvas id="streamCanvas"></canvas>
+    <button id="drawZoneButton">Draw zone</button>
+
+    <script src="script.js"> </script>
+    <script src="drawing.js"> </script>
+</body>
+</html>

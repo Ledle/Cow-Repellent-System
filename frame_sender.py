@@ -2,11 +2,15 @@ import asyncio
 import threading
 import queue
 import json
-import time
 import websockets
+import logging
+
+log = logging.getLogger()
+
 
 class SyncWSServer:
     """WebSocket-сервер, который работает из синхронного потока."""
+
     def __init__(self, host="0.0.0.0", port=8080, buffer_size=5):
         self.host = host
         self.port = port
@@ -20,7 +24,7 @@ class SyncWSServer:
             print(f"👤 Клиент подключён: {websocket.remote_address}")
             try:
                 while True:
-                    # Ждём данные из очереди. Таймаут нужен, чтобы сервер 
+                    # Ждём данные из очереди. Таймаут нужен, чтобы сервер
                     # мог корректно реагировать на закрытие соединения.
                     try:
                         img_bytes, boxes = self.queue.get(timeout=1.0)
@@ -31,7 +35,7 @@ class SyncWSServer:
                     await websocket.send(img_bytes)
                     # 2. JSON уходит как text frame
                     await websocket.send(json.dumps({"boxes": boxes}))
-                    
+
             except websockets.exceptions.ConnectionClosed:
                 pass
             finally:
@@ -51,6 +55,7 @@ class SyncWSServer:
 
     def start(self):
         """Запускает сервер в фоновом потоке."""
+        log.info("Запуск сокета")
         self._thread = threading.Thread(target=self._run_async_server, daemon=True)
         self._thread.start()
         self._ready.wait()  # Блокируем вызов start(), пока сокет реально не откроется
