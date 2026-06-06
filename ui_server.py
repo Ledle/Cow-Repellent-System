@@ -129,9 +129,7 @@ class UIServer:
             allow_headers=["*"],
         )
 
-    def _setup_routes(self):
-        app = self.app
-
+    def _setup_site_routes(self, app):
         # --- HTML СТРАНИЦЫ ---
         @app.get("/", response_class=HTMLResponse)
         async def read_root():
@@ -157,6 +155,7 @@ class UIServer:
             except FileNotFoundError:
                 return "<h1>zones.html не найден</h1>"
 
+    def _setup_device_routes(self, app):
         # --- REST API: УСТРОЙСТВА ---
         @app.get("/api/devices")
         async def get_devices():
@@ -201,7 +200,7 @@ class UIServer:
             del self.DEVICES[device_id]
             return {"status": "deleted", "id": device_id}
 
-        # --- REST API: КАМЕРЫ ---
+    def _setup_system_routes(self, app):
         @app.get("/api/system/status")
         async def get_system_status():
             camera_list = [
@@ -215,6 +214,8 @@ class UIServer:
                 "cameras": camera_list,
             }
 
+    def _setup_source_routes(self, app):
+        # --- REST API: КАМЕРЫ ---
         @app.get("/api/camera/{camera_id}")
         async def get_camera(camera_id: str):
             if camera_id not in self.CAMERAS:
@@ -282,6 +283,7 @@ class UIServer:
 
             return {"status": "deleted", "id": camera_id}
 
+    def _setup_zone_routes(self, app):
         # --- REST API: ЗОНЫ ---
         @app.get("/api/camera/{camera_id}/zones")
         async def get_zones(camera_id: str):
@@ -356,6 +358,14 @@ class UIServer:
                         del self.ZONES[cam_id][i]
                         return {"status": "deleted", "id": zone_id}
             raise HTTPException(status_code=404, detail="Зона не найдена")
+
+    def _setup_routes(self):
+        app = self.app
+        self._setup_site_routes(app)
+        self._setup_device_routes(app)
+        self._setup_source_routes(app)
+        self._setup_zone_routes(app)
+        self._setup_system_routes(app)
 
         # --- WEBSOCKET И КАДРЫ ---
         @app.get("/api/camera/{camera_id}/last-frame")

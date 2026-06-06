@@ -11,6 +11,7 @@ default_config = {
         "enable-web-ui": False,
         "enable-config-api": False,
         "logging-level": "info",
+        "name": "Cow Reppelent System"
     },
 }
 
@@ -35,6 +36,7 @@ class ApplicationConfig(BaseModel):
     )
 
     model_config = SettingsConfigDict(populate_by_name=True)
+    name: str = Field(default=default_config["application"]["name"])
 
 
 class RepellerConfig(BaseModel):

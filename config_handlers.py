@@ -51,7 +51,7 @@ def application_config_handler(value: dict, ui_server: UIServer):
     log.debug("handling app")
     setup_logging(level=log_levels[value["logging_level"]])
     if value["enable_web_ui"]:
-        server = threading.Thread(target=ui_server.start_ui_server)
+        server = threading.Thread(target=ui_server.run)
         server.start()
 
 
