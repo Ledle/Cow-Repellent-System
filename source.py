@@ -1,67 +1,73 @@
 import cv2
 import threading
 import logging
+import time
+import os
 
 
 log = logging.getLogger("VideoSource")
-log.setLevel(logging.INFO)
 
 
 class VideoSource:
     def __init__(self, source: str, name: str):
-        self.source = source
-        self.cap = cv2.VideoCapture(source)
+        self.source_url = source
         self.name = name
-        self.lock = threading.Lock()
-        self.running = False
-        self.latest_frame = None
+        self._lock = threading.Lock()
+        self.enabled = False
+        self._latest_frame = None
+        self._cap = None
+        self.ready = threading.Event()
 
     def get_frame(self):
-        # ret, frame = self.cap.read()
-        with self.lock:
-            return self.latest_frame
+        with self._lock:
+            return self._latest_frame
 
     def _start(self):
         log.debug("source starting")
-        while self.running:
-            ret, frame = self.cap.read()
+        cap = self._get_cap()
+        while self.enabled:
+            ret, frame = cap.read()
             if not ret:
-                break
-            with self.lock:
+                log.warning(f"unable to read source from {self.source_url}")
+                time.sleep(1)
+                self.ready.clear()
+                continue
+                # break
+            with self._lock:
                 log.debug("frame set")
-                self.latest_frame = frame
+                self._latest_frame = frame
+            if not self.ready.is_set():
+                self.ready.set()
 
     def start_reading(self):
-        self.running = True
+        self.enabled = True
         self.thread = threading.Thread(target=self._start, daemon=True)
         self.thread.start()
         log.debug("source started")
 
     def stop_reading(self):
-        self.running = False
+        self.enabled = False
+
+    def _get_cap(self):
+        if self._cap is None:
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "fflags:nobuffer"
+            self._cap = cv2.VideoCapture(self.source_url)
+        return self._cap
 
     def release(self):
-        self.cap.release()
+        self._get_cap.release()
 
     def frame_generator(self):
         log.debug("frame generating")
-        if not self.running:
+        if not self.enabled:
             log.debug("starting reading")
             self.start_reading()
-        while self.running:
+        while self.enabled:
             frame = self.get_frame()
-            #log.debug(f"yielding frame... {frame}")
+            # log.debug(f"yielding frame... {frame}")
             yield frame
         log.debug("self not running")
 
 
-class VideoSourceManager:
-    sources = []
-
-    def add_source(self, source: VideoSource):
-        self.sources.append(source)
-        return self.sources.index(source)
-
-    def frame_generator(self, source_id):
-        while self.current_source is None:
-            yield self.current_source.get_frame()
+def source_from_dict(data: dict) -> VideoSource:
+    return VideoSource(data["url"], data["name"])

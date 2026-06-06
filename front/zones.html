@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Зоны контроля</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e2f;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --accent-color: #00bcd4;
+            --success-color: #4caf50;
+            --error-color: #f44336;
+            --warning-color: #ff9800;
+            --border-color: #33334d;
+            --input-bg: #2a2a3e;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 20px;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .top-bar h1 {
+            margin: 0;
+            color: var(--accent-color);
+            font-size: 1.4rem;
+        }
+        .top-bar a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .top-bar a:hover { color: var(--accent-color); }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+        }
+
+        .canvas-panel {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            background-color: #000;
+            border-radius: 4px;
+            overflow: hidden;
+            user-select: none;
+        }
+        .canvas-wrapper img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        .canvas-wrapper svg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .canvas-wrapper.drawing svg { pointer-events: auto; cursor: crosshair; }
+        .canvas-wrapper.drawing img { cursor: crosshair; }
+
+        .canvas-toolbar {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .canvas-toolbar .hint {
+            margin-left: auto;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .zones-panel {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+        }
+        .zones-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.1rem;
+            color: var(--accent-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .zone-item {
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .zone-item-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .zone-color-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            flex-shrink: 0;
+        }
+        .zone-name {
+            flex: 1;
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+        .zone-meta {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .zone-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        /* Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 38px; height: 20px;
+            flex-shrink: 0;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #555;
+            transition: .3s;
+            border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px; width: 14px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--success-color); }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        /* Buttons */
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+        .btn:hover:not(:disabled) { opacity: 0.85; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background-color: var(--accent-color); color: #000; }
+        .btn-success { background-color: var(--success-color); color: #fff; }
+        .btn-danger { background-color: var(--error-color); color: #fff; }
+        .btn-secondary { background-color: #555; color: #fff; }
+        .btn-warning { background-color: var(--warning-color); color: #000; }
+        .btn-small { padding: 4px 8px; font-size: 0.8rem; }
+
+        .empty {
+            text-align: center;
+            padding: 30px 10px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Модалка имени зоны */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal h3 { margin-top: 0; color: var(--accent-color); }
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="color"] {
+            width: 100%;
+            padding: 8px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+        .form-group input[type="color"] {
+            height: 40px;
+            padding: 4px;
+            cursor: pointer;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        /* Точки и полигон в режиме рисования */
+        .vertex {
+            fill: #fff;
+            stroke: #000;
+            stroke-width: 0.004;
+            cursor: pointer;
+        }
+        .polygon-preview {
+            fill: rgba(0, 188, 212, 0.2);
+            stroke: var(--accent-color);
+            stroke-width: 0.003;
+            stroke-dasharray: 0.01, 0.005;
+        }
+        .polygon-final {
+            stroke-width: 0.003;
+        }
+        .polygon-final.active {
+            fill-opacity: 0.2;
+        }
+        .polygon-final.inactive {
+            fill-opacity: 0.05;
+            stroke-dasharray: 0.01, 0.005;
+        }
+        .zone-label {
+            font-size: 0.035px;
+            fill: #fff;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 0 0 2px #000;
+        }
+    </style>
+</head>
+<body>
+
+<div class="top-bar">
+    <div>
+        <a href="/">← Назад к камерам</a>
+        <h1 id="page-title">Зоны контроля</h1>
+    </div>
+    <div>
+        <span id="camera-name" style="color: var(--text-secondary); margin-right: 10px;"></span>
+    </div>
+</div>
+
+<div class="layout">
+    <!-- Левая часть: изображение + рисование -->
+    <div class="canvas-panel">
+        <div class="canvas-wrapper" id="canvas-wrapper">
+            <img id="frame-img" alt="Кадр" />
+            <svg id="overlay-svg" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="canvas-toolbar">
+            <button class="btn btn-primary" id="btn-draw" onclick="startDrawing()">+ Новая зона</button>
+            <button class="btn btn-success" id="btn-finish" onclick="finishPolygon()" style="display:none;">✓ Завершить</button>
+            <button class="btn btn-secondary" id="btn-undo" onclick="undoPoint()" style="display:none;">↶ Отменить точку</button>
+            <button class="btn btn-danger" id="btn-cancel" onclick="cancelDrawing()" style="display:none;">✕ Отмена</button>
+            <span class="hint" id="drawing-hint" style="display:none;">Кликайте по изображению, чтобы добавить точки</span>
+        </div>
+    </div>
+
+    <!-- Правая часть: список зон -->
+    <div class="zones-panel">
+        <h2>
+            <span>Зоны</span>
+            <span id="zones-count" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal;">0</span>
+        </h2>
+        <div id="zones-list">
+            <div class="empty">Загрузка...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Модалка сохранения зоны -->
+<div class="modal-overlay" id="save-modal">
+    <div class="modal">
+        <h3 id="save-modal-title">Сохранить зону</h3>
+        <div class="form-group">
+            <label for="zone-name-input">Название зоны</label>
+            <input type="text" id="zone-name-input" placeholder="Например: Периметр склада" />
+        </div>
+        <div class="form-group">
+            <label for="zone-color-input">Цвет</label>
+            <input type="color" id="zone-color-input" value="#00ff00" />
+        </div>
+        <div class="form-group">
+            <label>Привязанные устройства-отпугиватели</label>
+            <div id="zone-devices-list" style="max-height: 150px; overflow-y: auto; background: var(--input-bg); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color);">
+                <!-- Чекбоксы устройств будут здесь -->
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="cancelSave()">Отмена</button>
+            <button class="btn btn-success" onclick="confirmSave()">Сохранить</button>
+        </div>
+    </div>
+</div>
+<script>
+    const API_BASE = 'http://localhost:8000/api';
+    const params = new URLSearchParams(window.location.search);
+    const CAMERA_ID = params.get('camera');
+
+    if (!CAMERA_ID) {
+        document.body.innerHTML = '<h2 style="color:#f44336;padding:20px;">Ошибка: не указан ID камеры в URL (?camera=cam_01)</h2>';
+    }
+
+    // Состояние
+    let zones = [];
+    let isDrawing = false;
+    let currentPoints = [];       // Относительные координаты [ {x,y}, ... ]
+    let editingZoneId = null;     // Если редактируем существующую зону
+    let lastFrameUrl = null;
+    let ws = null;
+    // Глобальный массив для хранения списка всех устройств
+    let allDevices = [];
+
+    // DOM
+    const canvasWrapper = document.getElementById('canvas-wrapper');
+    const frameImg = document.getElementById('frame-img');
+    const svg = document.getElementById('overlay-svg');
+    const btnDraw = document.getElementById('btn-draw');
+    const btnFinish = document.getElementById('btn-finish');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnCancel = document.getElementById('btn-cancel');
+    const drawingHint = document.getElementById('drawing-hint');
+
+    // === ИНИЦИАЛИЗАЦИЯ ===
+
+async function init() {
+    if (!CAMERA_ID) return;
+    try {
+        const camResp = await fetch(`${API_BASE}/camera/${CAMERA_ID}`);
+        if (!camResp.ok) throw new Error('Камера не найдена');
+        const cam = await camResp.json();
+        document.getElementById('camera-name').textContent = cam.name;
+        document.getElementById('page-title').textContent = `Зоны контроля — ${cam.name}`;
+
+        const devResp = await fetch(`${API_BASE}/devices`);
+        if (devResp.ok) allDevices = await devResp.json();
+
+        connectWebSocket();
+        await loadZones();
+    } catch (e) {
+        alert('Ошибка инициализации: ' + e.message);
+    }
+}
+
+    // === WEBSOCKET (получение кадров) ===
+    function connectWebSocket() {
+        const wsUrl = `ws://localhost:8000/ws/${CAMERA_ID}`;
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.frame && !isDrawing) {
+                    // Обновляем кадр только если НЕ в режиме рисования
+                    frameImg.src = data.frame;
+                    lastFrameUrl = data.frame;
+                }
+            } catch (e) { console.error(e); }
+        };
+        ws.onclose = () => {
+            // Переподключение
+            setTimeout(connectWebSocket, 2000);
+        };
+    }
+
+    // === ЗАГРУЗКА ЗОН ===
+    async function loadZones() {
+        try {
+            const resp = await fetch(`${API_BASE}/camera/${CAMERA_ID}/zones`);
+            if (!resp.ok) throw new Error('Ошибка загрузки зон');
+            zones = await resp.json();
+            renderZonesList();
+            renderZonesOnCanvas();
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    // === РЕНДЕР СПИСКА ЗОН ===
+    function renderZonesList() {
+        const container = document.getElementById('zones-list');
+        document.getElementById('zones-count').textContent = zones.length;
+
+        if (zones.length === 0) {
+            container.innerHTML = '<div class="empty">Зон пока нет.<br>Нажмите «+ Новая зона», чтобы начать.</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        zones.forEach(z => {
+            const item = document.createElement('div');
+            item.className = 'zone-item';
+            item.innerHTML = `
+                <div class="zone-item-header">
+                    <div class="zone-color-dot" style="background-color: ${z.color}"></div>
+                    <div class="zone-name">${escapeHtml(z.name)}</div>
+                    <label class="switch" title="${z.active ? 'Активна' : 'Деактивирована'}">
+                        <input type="checkbox" ${z.active ? 'checked' : ''} onchange="toggleZone('${z.id}', this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="zone-meta">
+                    Точек: ${z.points.length} ·
+                    ${z.linked_devices && z.linked_devices.length > 0
+                        ? `Устройств: ${z.linked_devices.length}`
+                        : 'Устройства не привязаны'}
+                </div>
+                <div class="zone-actions">
+                    <button class="btn btn-secondary btn-small" onclick="editZone('${z.id}')">✎ Редактировать</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteZone('${z.id}')">🗑 Удалить</button>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+        }[c]));
+    }
+
+    // === РЕНДЕР ЗОН НА CANVAS ===
+    function renderZonesOnCanvas() {
+        // Очищаем SVG, кроме временного полигона в режиме рисования
+        svg.innerHTML = '';
+
+        // Рисуем сохранённые зоны
+        zones.forEach(z => {
+            const pointsStr = z.points.map(p => `${p.x},${p.y}`).join(' ');
+            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            poly.setAttribute('points', pointsStr);
+            poly.setAttribute('class', `polygon-final ${z.active ? 'active' : 'inactive'}`);
+            poly.setAttribute('stroke', z.color);
+            poly.setAttribute('fill', z.color);
+            svg.appendChild(poly);
+
+            // Подпись в центре полигона
+            const center = polygonCentroid(z.points);
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', center.x);
+            text.setAttribute('y', center.y);
+            text.setAttribute('class', 'zone-label');
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('dominant-baseline', 'middle');
+            text.textContent = z.name + (z.active ? '' : ' (выкл)');
+            svg.appendChild(text);
+        });
+
+        // Если в режиме рисования — рисуем текущий полигон поверх
+        if (isDrawing && currentPoints.length > 0) {
+            drawCurrentPolygon();
+        }
+    }
+
+    function polygonCentroid(points) {
+        let x = 0, y = 0;
+        points.forEach(p => { x += p.x; y += p.y; });
+        return { x: x / points.length, y: y / points.length };
+    }
+
+    // === РЕЖИМ РИСОВАНИЯ ===
+    function startDrawing() {
+        if (!lastFrameUrl) {
+            // Пытаемся получить последний кадр напрямую
+            fetch(`${API_BASE}/camera/${CAMERA_ID}/last-frame`)
+                .then(r => r.json())
+                .then(d => {
+                    lastFrameUrl = d.frame;
+                    frameImg.src = d.frame;
+                    enterDrawingMode();
+                })
+                .catch(() => alert('Кадр ещё не получен. Подождите секунду.'));
+            return;
+        }
+        enterDrawingMode();
+    }
+
+    function enterDrawingMode() {
+        isDrawing = true;
+        currentPoints = [];
+        editingZoneId = null;
+        canvasWrapper.classList.add('drawing');
+        btnDraw.style.display = 'none';
+        btnFinish.style.display = 'none'; // Показываем, когда >=3 точек
+        btnUndo.style.display = 'none';
+        btnCancel.style.display = 'inline-block';
+        drawingHint.style.display = 'inline';
+        renderZonesOnCanvas();
+    }
+
+    function cancelDrawing() {
+        isDrawing = false;
+        currentPoints = [];
+        editingZoneId = null;
+        canvasWrapper.classList.remove('drawing');
+        btnDraw.style.display = 'inline-block';
+        btnFinish.style.display = 'none';
+        btnUndo.style.display = 'none';
+        btnCancel.style.display = 'none';
+        drawingHint.style.display = 'none';
+        renderZonesOnCanvas();
+    }
+
+    function undoPoint() {
+        if (currentPoints.length > 0) {
+            currentPoints.pop();
+            renderZonesOnCanvas();
+            updateDrawingButtons();
+        }
+    }
+
+    function updateDrawingButtons() {
+        if (currentPoints.length >= 3) {
+            btnFinish.style.display = 'inline-block';
+            btnUndo.style.display = 'inline-block';
+        } else if (currentPoints.length > 0) {
+            btnFinish.style.display = 'none';
+            btnUndo.style.display = 'inline-block';
+        } else {
+            btnFinish.style.display = 'none';
+            btnUndo.style.display = 'none';
+        }
+    }
+
+    // Клик по изображению — добавляем точку
+    canvasWrapper.addEventListener('click', (e) => {
+        if (!isDrawing) return;
+        // Игнорируем клики по кнопкам внутри wrapper (если будут)
+        if (e.target !== frameImg && e.target !== svg) return;
+
+        const rect = frameImg.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = (e.clientY - rect.top) / rect.height;
+
+        if (x < 0 || x > 1 || y < 0 || y > 1) return;
+        currentPoints.push({ x, y });
+        renderZonesOnCanvas();
+        updateDrawingButtons();
+    });
+
+    // Отрисовка текущего полигона + точки
+    function drawCurrentPolygon() {
+        if (currentPoints.length === 0) return;
+
+        // Полигон (если >=3 точек — замкнутый, иначе — ломаная)
+        if (currentPoints.length >= 3) {
+            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            poly.setAttribute('points', currentPoints.map(p => `${p.x},${p.y}`).join(' '));
+            poly.setAttribute('class', 'polygon-preview');
+            svg.appendChild(poly);
+        } else if (currentPoints.length === 2) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            line.setAttribute('points', currentPoints.map(p => `${p.x},${p.y}`).join(' '));
+            line.setAttribute('fill', 'none');
+            line.setAttribute('stroke', '#00bcd4');
+            line.setAttribute('stroke-width', '0.003');
+            line.setAttribute('stroke-dasharray', '0.01,0.005');
+            svg.appendChild(line);
+        }
+
+        // Точки
+        currentPoints.forEach((p, i) => {
+            const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            c.setAttribute('cx', p.x);
+            c.setAttribute('cy', p.y);
+            c.setAttribute('r', '0.008');
+            c.setAttribute('class', 'vertex');
+            svg.appendChild(c);
+        });
+    }
+
+    // === ЗАВЕРШЕНИЕ РИСОВАНИЯ ===
+function finishPolygon() {
+    if (currentPoints.length < 3) return;
+    
+    const container = document.getElementById('zone-devices-list');
+    container.innerHTML = '';
+    if (allDevices.length === 0) {
+        container.innerHTML = '<div style="color: var(--text-secondary); font-size: 0.85rem;">Нет доступных устройств. <a href="/devices" target="_blank" style="color: var(--accent-color);">Добавить устройства</a></div>';
+    } else {
+        allDevices.forEach(dev => {
+            // Используем String() для надежного сравнения, так как ID может быть числом или строкой
+            const devIdStr = String(dev.id);
+            const isChecked = editingZoneId ? zones.find(z => z.id === editingZoneId)?.linked_devices?.map(String).includes(devIdStr) : false;
+            const div = document.createElement('div');
+            div.style.marginBottom = '6px';
+            div.innerHTML = `
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                    <input type="checkbox" class="zone-device-checkbox" value="${devIdStr}" ${isChecked ? 'checked' : ''}>
+                    <span>${dev.name}</span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: auto;">(${dev.url})</span>
+                </label>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    document.getElementById('save-modal').classList.add('active');
+    document.getElementById('zone-name-input').focus();
+}
+
+    function cancelSave() {
+        document.getElementById('save-modal').classList.remove('active');
+        // Возвращаемся в режим рисования — точки остаются
+    }
+
+    // Обновите confirmSave, чтобы собирать выбранные устройства:
+async function confirmSave() {
+    const name = document.getElementById('zone-name-input').value.trim();
+    const color = document.getElementById('zone-color-input').value;
+    if (!name) { alert('Введите название зоны'); return; }
+
+    const linkedDevices = [];
+    document.querySelectorAll('.zone-device-checkbox:checked').forEach(cb => {
+        linkedDevices.push(cb.value);
+    });
+
+    const payload = {
+        name, color, points: currentPoints, active: true, linked_devices: linkedDevices
+    };
+
+    try {
+        let resp;
+        if (editingZoneId) {
+            resp = await fetch(`${API_BASE}/zone/${editingZoneId}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+        } else {
+            resp = await fetch(`${API_BASE}/camera/${CAMERA_ID}/zone`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+        }
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Ошибка'); }
+        
+        document.getElementById('save-modal').classList.remove('active');
+        document.getElementById('zone-name-input').value = '';
+        exitDrawingAfterSave();
+        await loadZones();
+    } catch (e) { alert('Ошибка: ' + e.message); }
+}
+
+    function exitDrawingAfterSave() {
+        isDrawing = false;
+        currentPoints = [];
+        editingZoneId = null;
+        canvasWrapper.classList.remove('drawing');
+        btnDraw.style.display = 'inline-block';
+        btnFinish.style.display = 'none';
+        btnUndo.style.display = 'none';
+        btnCancel.style.display = 'none';
+        drawingHint.style.display = 'none';
+        renderZonesOnCanvas();
+    }
+
+    // === ДЕЙСТВИЯ С ЗОНАМИ ===
+    async function toggleZone(zoneId, active) {
+        try {
+            const resp = await fetch(`${API_BASE}/zone/${zoneId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active })
+            });
+            if (!resp.ok) throw new Error('Ошибка обновления');
+            // Обновляем локальный массив
+            const z = zones.find(z => z.id === zoneId);
+            if (z) z.active = active;
+            renderZonesList();
+            renderZonesOnCanvas();
+        } catch (e) {
+            alert('Ошибка: ' + e.message);
+            await loadZones();
+        }
+    }
+
+    async function deleteZone(zoneId) {
+        if (!confirm('Удалить эту зону?')) return;
+        try {
+            const resp = await fetch(`${API_BASE}/zone/${zoneId}`, { method: 'DELETE' });
+            if (!resp.ok) throw new Error('Ошибка удаления');
+            await loadZones();
+        } catch (e) {
+            alert('Ошибка: ' + e.message);
+        }
+    }
+
+    // Обновите editZone, чтобы предзаполнять чекбоксы (уже учтено в finishPolygon выше)
+function editZone(zoneId) {
+    const z = zones.find(z => z.id === zoneId);
+    if (!z) return;
+    editingZoneId = zoneId;
+    currentPoints = z.points.map(p => ({ ...p }));
+    isDrawing = true;
+    canvasWrapper.classList.add('drawing');
+    btnDraw.style.display = 'none';
+    btnCancel.style.display = 'inline-block';
+    drawingHint.style.display = 'inline';
+    drawingHint.textContent = 'Редактирование: кликайте, чтобы изменить точки';
+    updateDrawingButtons();
+    
+    document.getElementById('zone-name-input').value = z.name;
+    document.getElementById('zone-color-input').value = z.color;
+    document.getElementById('save-modal-title').textContent = 'Сохранить изменения';
+    
+    finishPolygon(); 
+    renderZonesOnCanvas();
+}
+
+    // === ESC для отмены ===
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (document.getElementById('save-modal').classList.contains('active')) {
+                cancelSave();
+            } else if (isDrawing) {
+                cancelDrawing();
+            }
+        }
+    });
+
+    // === СТАРТ ===
+    init();
+
+
+
+
+
+
+
+
+</script>
+</body>
+</html>

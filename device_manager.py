@@ -1,16 +1,18 @@
-import uuid
 import logging
+
+from device import Device
 
 log = logging.getLogger("Device")
 
 
-class Device:
-    def __init__(self, name, url=""):
-        self.id = uuid.UUID()
-        self.name = name if name is not len(name) > 0 else self.id
+class DeviceManager:
+    def __init__(self):
+        self.devices = list()
 
-    def on(self):
-        log.info(f"device {self.name} activated")
+    def make_device(self, name, url="") -> Device:
+        device = Device(name, url)
+        self.devices.append(device)
+        return device
 
-    def off(self):
-        log.info(f"device {self.name} disactivated")
+    def get_devices(self):
+        return self.devices

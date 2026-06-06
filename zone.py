@@ -10,8 +10,9 @@ class Zone:
     def get_int_coords(self):
         res = []
         for i in self.coords:
-            res.append([int(i[0]),int(i[1])])
+            res.append([int(i[0]), int(i[1])])
         return res
+
     def _get_np_array(self, coords):
         return np.array(
             [[coords[i], coords[i + 1]] for i in range(0, len(coords), 2)],
@@ -25,7 +26,7 @@ class Zone:
 
     @classmethod
     def gen_free_form_zone(self, dots: list[int]):
-        assert len(dots)%2 == 0
+        assert len(dots) % 2 == 0
         return Zone(dots)
 
 

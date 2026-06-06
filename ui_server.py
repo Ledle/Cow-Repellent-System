@@ -1,0 +1,446 @@
+import asyncio
+import base64
+import io
+import json
+import random
+import time
+import uuid
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from PIL import Image, ImageDraw
+
+
+# === PYDANTIC МОДЕЛИ (Оставлены на уровне модуля для корректной работы FastAPI) ===
+
+
+class DeviceCreate(BaseModel):
+    name: str
+    url: str
+    enable: bool = True
+
+
+class DeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    url: Optional[str] = None
+    enable: Optional[bool] = None
+
+
+class CameraCreate(BaseModel):
+    name: str
+    url: str
+    test: bool = True
+    resolution: str = "1920x1080"
+    fps: int = 30
+
+
+class CameraUpdate(BaseModel):
+    name: Optional[str] = None
+    url: Optional[str] = None
+    test: Optional[bool] = None
+    resolution: Optional[str] = None
+    fps: Optional[int] = None
+
+
+class Point(BaseModel):
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
+
+
+class ZoneCreate(BaseModel):
+    name: str
+    points: List[Point] = Field(..., min_length=3)
+    color: Optional[str] = "#00ff00"
+    active: bool = True
+    linked_devices: List[str] = []
+
+
+class ZoneUpdate(BaseModel):
+    name: Optional[str] = None
+    points: Optional[List[Point]] = None
+    color: Optional[str] = None
+    active: Optional[bool] = None
+    linked_devices: Optional[List[str]] = None
+
+
+# === КЛАСС СЕРВЕРА ===
+
+PARENT_DIR: str = "front/"
+
+
+class UIServer:
+    def __init__(self):
+        self.app = FastAPI(title="VisionGuard UI Server")
+
+        # Инициализация состояния (вместо глобальных переменных)
+        self.device_counter = 3
+        self.camera_counter = 3
+
+        self.CAMERAS = {
+            "cam_01": {
+                "name": "Камера 1 (Главный вход)",
+                "url": "rtsp://example.com/cam1",
+                "test": True,
+                "resolution": "1920x1080",
+                "fps": 30,
+            },
+            "cam_02": {
+                "name": "Камера 2 (Складская зона)",
+                "url": "rtsp://example.com/cam2",
+                "test": True,
+                "resolution": "1280x720",
+                "fps": 25,
+            },
+        }
+
+        self.DEVICES = {
+            "dev_01": {
+                "id": "dev_01",
+                "name": "Отпугиватель 1",
+                "url": "http://192.168.1.10/api/trigger",
+                "enable": True,
+            },
+            "dev_02": {
+                "id": "dev_02",
+                "name": "Отпугиватель 2",
+                "url": "http://192.168.1.11/api/trigger",
+                "enable": True,
+            },
+        }
+
+        self.ZONES = {"cam_01": [], "cam_02": []}
+        self.LAST_FRAMES = {}
+        self.ACTIVE_WEBSOCKETS = {}
+
+        # Настройка приложения
+        self._setup_cors()
+        self._setup_routes()
+
+    def _setup_cors(self):
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    def _setup_routes(self):
+        app = self.app
+
+        # --- HTML СТРАНИЦЫ ---
+        @app.get("/", response_class=HTMLResponse)
+        async def read_root():
+            try:
+                with open(PARENT_DIR + "index.html", "r", encoding="utf-8") as f:
+                    return f.read()
+            except FileNotFoundError:
+                return "<h1>index.html не найден</h1>"
+
+        @app.get("/devices", response_class=HTMLResponse)
+        async def read_devices():
+            try:
+                with open(PARENT_DIR + "devices.html", "r", encoding="utf-8") as f:
+                    return f.read()
+            except FileNotFoundError:
+                return "<h1>devices.html не найден</h1>"
+
+        @app.get("/zones", response_class=HTMLResponse)
+        async def read_zones():
+            try:
+                with open(PARENT_DIR + "zones.html", "r", encoding="utf-8") as f:
+                    return f.read()
+            except FileNotFoundError:
+                return "<h1>zones.html не найден</h1>"
+
+        # --- REST API: УСТРОЙСТВА ---
+        @app.get("/api/devices")
+        async def get_devices():
+            return list(self.DEVICES.values())
+
+        @app.post("/api/devices")
+        async def create_device(device: DeviceCreate):
+            dev_id = f"dev_{self.device_counter:02d}"
+            self.device_counter += 1
+
+            new_device = device.dict()
+            new_device["id"] = dev_id
+            self.DEVICES[dev_id] = new_device
+
+            return {"status": "created", "id": dev_id}
+
+        @app.put("/api/devices/{device_id}")
+        async def update_device(device_id: str, device: DeviceUpdate):
+            if device_id not in self.DEVICES:
+                raise HTTPException(status_code=404, detail="Устройство не найдено")
+
+            d = self.DEVICES[device_id]
+            if device.name is not None:
+                d["name"] = device.name
+            if device.url is not None:
+                d["url"] = device.url
+            if device.enable is not None:
+                d["enable"] = device.enable
+
+            return {"status": "updated", "id": device_id}
+
+        @app.delete("/api/devices/{device_id}")
+        async def delete_device(device_id: str):
+            if device_id not in self.DEVICES:
+                raise HTTPException(status_code=404, detail="Устройство не найдено")
+
+            for zones in self.ZONES.values():
+                for z in zones:
+                    if device_id in z["linked_devices"]:
+                        z["linked_devices"].remove(device_id)
+
+            del self.DEVICES[device_id]
+            return {"status": "deleted", "id": device_id}
+
+        # --- REST API: КАМЕРЫ ---
+        @app.get("/api/system/status")
+        async def get_system_status():
+            camera_list = [
+                {"id": cam_id, "name": data["name"]}
+                for cam_id, data in self.CAMERAS.items()
+            ]
+            return {
+                "name": "VisionGuard Demo 2026",
+                "uptime": "14д 2ч 15м",
+                "status": "OK",
+                "cameras": camera_list,
+            }
+
+        @app.get("/api/camera/{camera_id}")
+        async def get_camera(camera_id: str):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+            return {"id": camera_id, **self.CAMERAS[camera_id]}
+
+        @app.get("/api/camera/{camera_id}/info")
+        async def get_camera_info(camera_id: str):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+            cam_data = self.CAMERAS[camera_id]
+            return {
+                "socketUrl": f"ws://localhost:8000/ws/{camera_id}",
+                "resolution": cam_data.get("resolution", "1920x1080"),
+                "fps": cam_data.get("fps", 30),
+            }
+
+        @app.post("/api/camera")
+        async def create_camera(camera: CameraCreate):
+            cam_id = f"cam_{self.camera_counter:02d}"
+            self.camera_counter += 1
+
+            new_camera = camera.dict()
+            self.CAMERAS[cam_id] = new_camera
+            self.ZONES[cam_id] = []
+
+            return {"status": "created", "id": cam_id}
+
+        @app.put("/api/camera/{camera_id}")
+        async def update_camera(camera_id: str, camera: CameraUpdate):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+
+            cam_data = self.CAMERAS[camera_id]
+            if camera.name is not None:
+                cam_data["name"] = camera.name
+            if camera.url is not None:
+                cam_data["url"] = camera.url
+            if camera.test is not None:
+                cam_data["test"] = camera.test
+            if camera.resolution is not None:
+                cam_data["resolution"] = camera.resolution
+            if camera.fps is not None:
+                cam_data["fps"] = camera.fps
+
+            return {"status": "updated", "id": camera_id}
+
+        @app.delete("/api/camera/{camera_id}")
+        async def delete_camera(camera_id: str):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+
+            if camera_id in self.ACTIVE_WEBSOCKETS:
+                try:
+                    await self.ACTIVE_WEBSOCKETS[camera_id].close(
+                        code=1000, reason="Camera deleted"
+                    )
+                except Exception:
+                    pass
+                del self.ACTIVE_WEBSOCKETS[camera_id]
+
+            del self.CAMERAS[camera_id]
+            self.ZONES.pop(camera_id, None)
+            self.LAST_FRAMES.pop(camera_id, None)
+
+            return {"status": "deleted", "id": camera_id}
+
+        # --- REST API: ЗОНЫ ---
+        @app.get("/api/camera/{camera_id}/zones")
+        async def get_zones(camera_id: str):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+
+            zones = self.ZONES.get(camera_id, [])
+            enriched_zones = []
+            for z in zones:
+                enriched = z.copy()
+                enriched["linked_devices_info"] = [
+                    self.DEVICES.get(d_id)
+                    for d_id in z["linked_devices"]
+                    if d_id in self.DEVICES
+                ]
+                enriched_zones.append(enriched)
+            return enriched_zones
+
+        @app.post("/api/camera/{camera_id}/zone")
+        async def create_zone(camera_id: str, zone: ZoneCreate):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+            if len(zone.points) < 3:
+                raise HTTPException(status_code=400, detail="Минимум 3 точки")
+
+            for dev_id in zone.linked_devices:
+                if dev_id not in self.DEVICES:
+                    raise HTTPException(
+                        status_code=400, detail=f"Устройство {dev_id} не найдено"
+                    )
+
+            new_zone = zone.dict()
+            new_zone["id"] = str(uuid.uuid4())[:8]
+            new_zone["camera_id"] = camera_id
+
+            self.ZONES.setdefault(camera_id, []).append(new_zone)
+            return new_zone
+
+        @app.put("/api/zone/{zone_id}")
+        async def update_zone(zone_id: str, update: ZoneUpdate):
+            for cam_id, zones in self.ZONES.items():
+                for z in zones:
+                    if z["id"] == zone_id:
+                        if update.name is not None:
+                            z["name"] = update.name
+                        if update.points is not None:
+                            if len(update.points) < 3:
+                                raise HTTPException(
+                                    status_code=400, detail="Минимум 3 точки"
+                                )
+                            z["points"] = [p.dict() for p in update.points]
+                        if update.color is not None:
+                            z["color"] = update.color
+                        if update.active is not None:
+                            z["active"] = update.active
+                        if update.linked_devices is not None:
+                            for dev_id in update.linked_devices:
+                                if dev_id not in self.DEVICES:
+                                    raise HTTPException(
+                                        status_code=400,
+                                        detail=f"Устройство {dev_id} не найдено",
+                                    )
+                            z["linked_devices"] = update.linked_devices
+                        return z
+            raise HTTPException(status_code=404, detail="Зона не найдена")
+
+        @app.delete("/api/zone/{zone_id}")
+        async def delete_zone(zone_id: str):
+            for cam_id, zones in self.ZONES.items():
+                for i, z in enumerate(zones):
+                    if z["id"] == zone_id:
+                        del self.ZONES[cam_id][i]
+                        return {"status": "deleted", "id": zone_id}
+            raise HTTPException(status_code=404, detail="Зона не найдена")
+
+        # --- WEBSOCKET И КАДРЫ ---
+        @app.get("/api/camera/{camera_id}/last-frame")
+        async def get_last_frame(camera_id: str):
+            if camera_id not in self.CAMERAS:
+                raise HTTPException(status_code=404, detail="Камера не найдена")
+            if not self.LAST_FRAMES.get(camera_id):
+                raise HTTPException(status_code=404, detail="Кадр ещё не получен")
+            return {"frame": self.LAST_FRAMES[camera_id]}
+
+        @app.websocket("/ws/{camera_id}")
+        async def websocket_endpoint(websocket: WebSocket, camera_id: str):
+            await websocket.accept()
+            if camera_id not in self.CAMERAS:
+                await websocket.close(code=1008, reason="Camera not found")
+                return
+
+            self.ACTIVE_WEBSOCKETS[camera_id] = websocket
+            try:
+                while True:
+                    if camera_id not in self.CAMERAS:
+                        break
+
+                    frame_url, detections_count = self._generate_frame(camera_id)
+                    self.LAST_FRAMES[camera_id] = frame_url
+
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "frame": frame_url,
+                                "detections": detections_count,
+                                "timestamp": time.time(),
+                            }
+                        )
+                    )
+                    await asyncio.sleep(0.15)
+            except WebSocketDisconnect:
+                print(f"Клиент отключился от камеры {camera_id}")
+            except Exception as e:
+                print(f"Ошибка WS камеры {camera_id}: {e}")
+            finally:
+                if (
+                    camera_id in self.ACTIVE_WEBSOCKETS
+                    and self.ACTIVE_WEBSOCKETS[camera_id] is websocket
+                ):
+                    del self.ACTIVE_WEBSOCKETS[camera_id]
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+
+    def _generate_frame(self, camera_id: str) -> tuple:
+        """Внутренний метод для генерации тестового кадра"""
+        cam_data = self.CAMERAS.get(camera_id, {"name": "Unknown Camera"})
+        img = Image.new("RGB", (400, 300), color=(25, 25, 35))
+        draw = ImageDraw.Draw(img)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        draw.text((10, 10), f"{cam_data.get('name', 'Camera')}", fill=(0, 255, 0))
+        draw.text((10, 30), f"Time: {timestamp}", fill=(200, 200, 200))
+
+        detections_count = random.randint(0, 3)
+        for _ in range(detections_count):
+            x1, y1 = random.randint(50, 250), random.randint(50, 200)
+            x2, y2 = x1 + random.randint(40, 80), y1 + random.randint(60, 120)
+            draw.rectangle([x1, y1, x2, y2], outline=(0, 255, 0), width=2)
+            draw.text(
+                (x1, y1 - 15), f"Person {random.randint(85, 99)}%", fill=(0, 255, 0)
+            )
+
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return f"data:image/jpeg;base64,{img_str}", detections_count
+
+    def run(self, host: str = "0.0.0.0", port: int = 8000):
+        """Метод для запуска сервера"""
+        import uvicorn
+
+        print(f"🚀 Запуск UI сервера на http://{host}:{port}")
+        uvicorn.run(self.app, host=host, port=port)
+
+
+# === ТОЧКА ВХОДА ===
+if __name__ == "__main__":
+    # Можно легко изменить директорию или порт при необходимости
+    server = UIServer()
+    server.run(host="0.0.0.0", port=8000)

@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель мониторинга системы детекции</title>
+    <style>
+        :root {
+            --bg-color: #121212; --card-bg: #1e1e2f; --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0; --accent-color: #00bcd4;
+            --success-color: #4caf50; --error-color: #f44336; --warning-color: #ff9800;
+            --border-color: #33334d; --input-bg: #2a2a3e;
+        }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background-color: var(--bg-color); color: var(--text-primary); margin: 0; padding: 20px; }
+        .system-header { background-color: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+        .system-header h1 { margin: 0; font-size: 1.5rem; color: var(--accent-color); }
+        .header-left { display: flex; align-items: center; gap: 20px; }
+        .system-info { display: flex; gap: 20px; font-size: 0.9rem; color: var(--text-secondary); align-items: center; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; text-transform: uppercase; }
+        .status-ok { background-color: rgba(76, 175, 80, 0.2); color: var(--success-color); }
+        .status-error { background-color: rgba(244, 67, 54, 0.2); color: var(--error-color); }
+        .status-connecting { background-color: rgba(255, 152, 0, 0.2); color: var(--warning-color); }
+
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background-color: var(--accent-color); color: #000; }
+        .btn-success { background-color: var(--success-color); color: #fff; }
+        .btn-danger { background-color: var(--error-color); color: #fff; }
+        .btn-secondary { background-color: #555; color: #fff; }
+        .btn-icon { padding: 6px 10px; background-color: transparent; color: var(--text-secondary); font-size: 1.1rem; }
+        .btn-icon:hover { color: var(--accent-color); }
+
+        .devices-panel { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .devices-panel h2 { margin: 0 0 15px 0; font-size: 1.1rem; color: var(--accent-color); display: flex; justify-content: space-between; align-items: center; }
+        .devices-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+        .device-card { background-color: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; display: flex; align-items: center; gap: 10px; }
+        .device-icon { width: 32px; height: 32px; background-color: rgba(0, 188, 212, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+        .device-info { flex: 1; min-width: 0; }
+        .device-info .name { font-weight: 500; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .device-info .url { font-size: 0.75rem; color: var(--text-secondary); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .device-info .status { font-size: 0.75rem; font-weight: bold; margin-top: 2px; }
+
+        .camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(450px, 1fr)); gap: 20px; }
+        .camera-card { background-color: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden; display: flex; flex-direction: column; }
+        .camera-header { padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .camera-header h3 { margin: 0; font-size: 1.1rem; }
+        .camera-header-actions { display: flex; gap: 5px; }
+        .camera-stream { width: 100%; height: 250px; background-color: #000; display: flex; align-items: center; justify-content: center; position: relative; }
+        .camera-stream img { width: 100%; height: 100%; object-fit: cover; display: none; }
+        .stream-placeholder { color: var(--text-secondary); font-size: 0.9rem; display: flex; align-items: center; }
+        .camera-meta { padding: 15px; font-size: 0.85rem; }
+        .meta-row { display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--text-secondary); }
+        .meta-value { color: var(--text-primary); font-family: 'Courier New', monospace; }
+        .loader { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid var(--accent-color); border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.75); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; padding: 25px; }
+        .modal h2 { margin-top: 0; color: var(--accent-color); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary); }
+        .form-group input, .form-group select { width: 100%; padding: 8px 12px; background-color: var(--input-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.95rem; box-sizing: border-box; }
+        .form-group input:disabled { opacity: 0.6; cursor: not-allowed; }
+        .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color); }
+        .modal-actions-right { display: flex; gap: 10px; }
+        .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+        
+        .camera-stream { position: relative; }
+        .zone-poly { stroke-width: 0.003; }
+        .zone-poly.active { fill-opacity: 0.2; }
+        .zone-poly.inactive { fill-opacity: 0.05; stroke-dasharray: 0.01,0.005; }
+    </style>
+</head>
+<body>
+    <header class="system-header">
+        <div class="header-left">
+            <div>
+                <h1 id="system-name">Загрузка системы...</h1>
+                <div style="margin-top: 5px; font-size: 0.85rem; color: var(--text-secondary);">
+                    Последнее обновление: <span id="last-update">--:--:--</span>
+                </div>
+            </div>
+        </div>
+        <div class="system-info">
+            <div>Uptime: <span id="system-uptime" class="meta-value">--</span></div>
+            <div>Общий статус: <span id="system-status" class="status-badge status-connecting">Инициализация</span></div>
+            <button class="btn btn-primary" onclick="openCameraModal()">+ Добавить камеру</button>
+        </div>
+    </header>
+
+    <section class="devices-panel">
+        <h2>
+            <span>Устройства системы</span>
+            <a href="/devices" class="btn btn-secondary" style="font-size: 0.8rem; text-decoration: none;">Управление устройствами →</a>
+        </h2>
+        <div class="devices-grid" id="global-devices-list">
+            <div style="color: var(--text-secondary); padding: 10px;">Загрузка устройств...</div>
+        </div>
+    </section>
+
+    <main class="camera-grid" id="camera-container"></main>
+
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <h2 id="modal-title">Добавить камеру</h2>
+            <form id="camera-form" onsubmit="saveCamera(event)">
+                <input type="hidden" id="form-mode" value="create">
+                <input type="hidden" id="form-original-id" value="">
+
+                <div class="form-group">
+                    <label for="form-id">ID камеры *</label>
+                    <input type="text" id="form-id" required placeholder="например: cam_03">
+                </div>
+                <div class="form-group">
+                    <label for="form-name">Название *</label>
+                    <input type="text" id="form-name" required placeholder="Например: Камера у входа">
+                </div>
+                <div class="form-group">
+                    <label for="form-url">URL потока (RTSP/HTTP) *</label>
+                    <input type="text" id="form-url" required placeholder="rtsp://192.168.1.100/stream">
+                </div>
+                <div class="form-group" style="display: flex; gap: 20px;">
+                    <div style="flex: 1;">
+                        <label for="form-resolution">Разрешение</label>
+                        <input type="text" id="form-resolution" placeholder="1920x1080" value="1920x1080">
+                    </div>
+                    <div style="flex: 1;">
+                        <label for="form-fps">FPS</label>
+                        <input type="number" id="form-fps" min="1" max="120" value="30">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="form-test" checked style="width: 18px; height: 18px;">
+                        <label for="form-test" style="margin: 0; cursor: pointer;">Тестовый режим (генерация кадров)</label>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <div>
+                        <button type="button" class="btn btn-danger" id="btn-delete" style="display: none;" onclick="deleteCamera()">Удалить</button>
+                    </div>
+                    <div class="modal-actions-right">
+                        <button type="button" class="btn btn-secondary" onclick="closeCameraModal()">Отмена</button>
+                        <button type="submit" class="btn btn-success">Сохранить</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000/api';
+        const activeSockets = new Map();
+
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/system/status`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+
+                document.getElementById('system-name').textContent = data.name || 'Система детекции';
+                document.getElementById('system-uptime').textContent = data.uptime || 'N/A';
+                const statusEl = document.getElementById('system-status');
+                statusEl.textContent = data.status === 'OK' ? 'Работает штатно' : 'Ошибка';
+                statusEl.className = `status-badge ${data.status === 'OK' ? 'status-ok' : 'status-error'}`;
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString('ru-RU');
+
+                const currentIds = new Set((data.cameras || []).map(c => c.id));
+                for (const [id, ws] of activeSockets.entries()) {
+                    if (!currentIds.has(id)) { ws.close(); activeSockets.delete(id); }
+                }
+
+                const container = document.getElementById('camera-container');
+                const existingIds = new Set([...container.querySelectorAll('.camera-card')].map(c => c.dataset.id));
+                for (const id of existingIds) {
+                    if (!currentIds.has(id)) document.getElementById(`card-${id}`).remove();
+                }
+
+                if (data.cameras && Array.isArray(data.cameras)) {
+                    for (const camera of data.cameras) {
+                        if (!existingIds.has(camera.id)) {
+                            createCameraCard(camera);
+                            setupCamera(camera.id);
+                        }
+                    }
+                }
+                if (!data.cameras || data.cameras.length === 0) {
+                    container.innerHTML = '<div class="empty-state">Нет настроенных камер. Нажмите «+ Добавить камеру», чтобы начать.</div>';
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки статуса системы:', error);
+                document.getElementById('system-status').textContent = 'Offline';
+                document.getElementById('system-status').className = 'status-badge status-error';
+            }
+        }
+
+        function createCameraCard(camera) {
+            const container = document.getElementById('camera-container');
+            const empty = container.querySelector('.empty-state');
+            if (empty) empty.remove();
+
+            const card = document.createElement('div');
+            card.className = 'camera-card';
+            card.id = `card-${camera.id}`;
+            card.dataset.id = camera.id;
+            card.innerHTML = `
+                <div class="camera-header">
+                    <h3>${camera.name}</h3>
+                    <div class="camera-header-actions">
+                        <span id="ws-status-${camera.id}" class="status-badge status-connecting">Подключение...</span>
+                        <button class="btn btn-icon" title="Зоны контроля" onclick="openZones('${camera.id}')">▦</button>
+                        <button class="btn btn-icon" title="Редактировать" onclick="openCameraModal('${camera.id}')">⚙</button>
+                    </div>
+                </div>
+                <div class="camera-stream">
+                    <div id="placeholder-${camera.id}" class="stream-placeholder">
+                        <div class="loader"></div><span style="margin-left: 10px">Ожидание потока...</span>
+                    </div>
+                    <img id="stream-img-${camera.id}" alt="Видеопоток" />
+                    <svg id="zones-svg-${camera.id}" viewBox="0 0 1 1" preserveAspectRatio="none" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>
+                </div>
+                <div class="camera-meta">
+                    <div class="meta-row"><span>Разрешение:</span><span id="res-${camera.id}" class="meta-value">--</span></div>
+                    <div class="meta-row"><span>FPS:</span><span id="fps-${camera.id}" class="meta-value">--</span></div>
+                    <div class="meta-row"><span>Обнаружено объектов:</span><span id="detections-${camera.id}" class="meta-value" style="color: var(--accent-color)">0</span></div>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        async function setupCamera(cameraId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/camera/${cameraId}/info`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                document.getElementById(`res-${cameraId}`).textContent = data.resolution || 'N/A';
+                document.getElementById(`fps-${cameraId}`).textContent = data.fps || 'N/A';
+                loadAndDrawZones(cameraId);
+                if (data.socketUrl) connectWebSocket(cameraId, data.socketUrl);
+            } catch (error) {
+                console.error(`Ошибка настройки камеры ${cameraId}:`, error);
+                const statusEl = document.getElementById(`ws-status-${cameraId}`);
+                if (statusEl) { statusEl.textContent = 'Ошибка API'; statusEl.className = 'status-badge status-error'; }
+            }
+        }
+
+        function connectWebSocket(cameraId, wsUrl) {
+            const statusEl = document.getElementById(`ws-status-${cameraId}`);
+            const imgEl = document.getElementById(`stream-img-${cameraId}`);
+            const placeholderEl = document.getElementById(`placeholder-${cameraId}`);
+            if (!imgEl || !placeholderEl) return;
+
+            if (activeSockets.has(cameraId)) activeSockets.get(cameraId).close();
+            const ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => { if (statusEl) { statusEl.textContent = 'Поток активен'; statusEl.className = 'status-badge status-ok'; } };
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.frame) { imgEl.src = data.frame; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; }
+                    if (data.detections !== undefined) {
+                        const detEl = document.getElementById(`detections-${cameraId}`);
+                        if (detEl) detEl.textContent = data.detections;
+                    }
+                } catch (e) { console.error(e); }
+            };
+            ws.onclose = () => {
+                if (statusEl) { statusEl.textContent = 'Отключено'; statusEl.className = 'status-badge status-error'; }
+                activeSockets.delete(cameraId);
+                if (document.getElementById(`card-${cameraId}`)) setTimeout(() => setupCamera(cameraId), 3000);
+            };
+            ws.onerror = () => ws.close();
+            activeSockets.set(cameraId, ws);
+        }
+
+        async function loadGlobalDevices() {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/devices`);
+                if (!resp.ok) throw new Error('Ошибка');
+                const devices = await resp.json();
+                const container = document.getElementById('global-devices-list');
+                if (devices.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-secondary); padding: 10px;">Нет добавленных устройств. <a href="/devices" style="color: var(--accent-color);">Добавить</a></div>';
+                    return;
+                }
+                container.innerHTML = devices.map(d => {
+                    const statusColor = d.enable ? 'var(--success-color)' : 'var(--error-color)';
+                    const statusText = d.enable ? '🟢 Включено' : '🔴 Выключено';
+                    return `
+                    <div class="device-card">
+                        <div class="device-icon">🔌</div>
+                        <div class="device-info">
+                            <div class="name">${d.name}</div>
+                            <div class="url">${d.url}</div>
+                            <div class="status" style="color: ${statusColor}">${statusText}</div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) { console.error('Ошибка загрузки устройств:', e); }
+        }
+
+        async function loadAndDrawZones(cameraId) {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/camera/${cameraId}/zones`);
+                if (!resp.ok) return;
+                const zones = await resp.json();
+                const svgEl = document.getElementById(`zones-svg-${cameraId}`);
+                if (!svgEl) return;
+                svgEl.innerHTML = '';
+                zones.forEach(z => {
+                    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                    poly.setAttribute('points', z.points.map(p => `${p.x},${p.y}`).join(' '));
+                    poly.setAttribute('stroke', z.color);
+                    poly.setAttribute('fill', z.color);
+                    poly.setAttribute('class', `zone-poly ${z.active ? 'active' : 'inactive'}`);
+                    svgEl.appendChild(poly);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        function openZones(cameraId) { window.location.href = `/zones?camera=${cameraId}`; }
+
+        async function openCameraModal(cameraId = null) {
+            const overlay = document.getElementById('modal-overlay');
+            const modeInput = document.getElementById('form-mode');
+            const originalIdInput = document.getElementById('form-original-id');
+            const idInput = document.getElementById('form-id');
+            const deleteBtn = document.getElementById('btn-delete');
+
+            if (cameraId) {
+                modeInput.value = 'edit';
+                originalIdInput.value = cameraId;
+                idInput.value = cameraId;
+                idInput.disabled = true;
+                deleteBtn.style.display = 'inline-block';
+                document.getElementById('modal-title').textContent = `Редактирование: ${cameraId}`;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/camera/${cameraId}`);
+                    if (!response.ok) throw new Error('Ошибка загрузки');
+                    const data = await response.json();
+                    document.getElementById('form-name').value = data.name || '';
+                    document.getElementById('form-url').value = data.url || '';
+                    document.getElementById('form-resolution').value = data.resolution || '1920x1080';
+                    document.getElementById('form-fps').value = data.fps || 30;
+                    document.getElementById('form-test').checked = data.test !== false;
+                } catch (e) { alert('Не удалось загрузить данные камеры'); return; }
+            } else {
+                modeInput.value = 'create';
+                originalIdInput.value = '';
+                idInput.value = 'cam_' + String(Math.floor(Math.random() * 90) + 10).padStart(2, '0');
+                idInput.disabled = false;
+                document.getElementById('form-name').value = '';
+                document.getElementById('form-url').value = '';
+                document.getElementById('form-resolution').value = '1920x1080';
+                document.getElementById('form-fps').value = 30;
+                document.getElementById('form-test').checked = true;
+                deleteBtn.style.display = 'none';
+                document.getElementById('modal-title').textContent = 'Добавить камеру';
+            }
+            overlay.classList.add('active');
+        }
+
+        function closeCameraModal() { document.getElementById('modal-overlay').classList.remove('active'); }
+
+        async function saveCamera(event) {
+            event.preventDefault();
+            const mode = document.getElementById('form-mode').value;
+            const originalId = document.getElementById('form-original-id').value;
+            const id = document.getElementById('form-id').value.trim();
+            
+            const payload = {
+                name: document.getElementById('form-name').value.trim(),
+                url: document.getElementById('form-url').value.trim(),
+                test: document.getElementById('form-test').checked,
+                resolution: document.getElementById('form-resolution').value.trim(),
+                fps: parseInt(document.getElementById('form-fps').value) || 30
+            };
+
+            let url, method;
+            if (mode === 'create') {
+                url = `${API_BASE_URL}/camera`;
+                method = 'POST';
+                payload.id = id; 
+            } else {
+                url = `${API_BASE_URL}/camera/${originalId}`;
+                method = 'PUT';
+            }
+
+            try {
+                const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) { const err = await response.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+                closeCameraModal();
+                await loadSystemStatus();
+            } catch (e) { alert('Ошибка: ' + e.message); }
+        }
+
+        async function deleteCamera() {
+            const originalId = document.getElementById('form-original-id').value;
+            if (!originalId || !confirm(`Удалить камеру "${originalId}"?`)) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/camera/${originalId}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Ошибка удаления');
+                closeCameraModal();
+                await loadSystemStatus();
+            } catch (e) { alert('Ошибка: ' + e.message); }
+        }
+
+        document.getElementById('modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') closeCameraModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCameraModal(); });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSystemStatus();
+            loadGlobalDevices();
+            setInterval(loadSystemStatus, 60000);
+            setInterval(loadGlobalDevices, 60000);
+        });
+        window.addEventListener('beforeunload', () => { activeSockets.forEach(ws => ws.close()); });
+    </script>
+</body>
+</html>

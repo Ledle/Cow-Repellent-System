@@ -2,6 +2,9 @@ from detector import Detected
 from zone import Zone, get_closest_zone
 import cv2
 import logging
+from source import VideoSource
+from device import Device
+from zone import Zone
 
 log = logging.getLogger()
 # 3. Координаты зоны контроля
@@ -61,17 +64,69 @@ def test_callback(detected: list[Detected], frame, sender):
     #    return True
 
 
+class DeviceCallback:
+    def __init__(
+        self,
+        devices: list[Device] = [],
+        whitelist: list[str] = [],
+        blocklist: list[str] = [],
+    ):
+        self._devices = devices
+        self.whitelist = whitelist
+        self.blocklist = blocklist
+        right_x = 800
+        self._zone_devices = {
+            Zone.gen_square_zone(0, 0, 100, 600): devices[0],
+            Zone.gen_square_zone(right_x, 0, right_x - 100, 600): devices[1],
+        }
+        self._to_off = {d: 5 for d in self._devices}
+
+    def turn_off_all(self):
+        for device in self.devices:
+            device.off()
+            self._to_off[device] = 5
+
+    def callback(self, detected: list[Detected], frame, source: VideoSource):
+        to_enable = []
+        for d in detected:
+            if d.name in self.whitelist:
+                zone = get_closest_zone(d.box, self._zone_devices.keys())
+                to_enable.append(self._zone_devices[zone])
+            if d.name in self.blocklist:
+                log.info(f"обнаружен {d.name}! отключение отпугивателей")
+                to_enable.clear()
+                break
+
+        for device in self._devices:
+            if device in to_enable:
+                device.on()
+                self._to_off[device] = 5
+            else:
+                if self._to_off[device] < 1:
+                    device.off()
+                else:
+                    self._to_off[device] -= 1
+
+
+i = 0
+
+
 class CliCallback:
     def __init__(self, name: str):
-        self.name = name
+        global i
+        self.name = name + str(i)
+        i += 1
 
-    def cli_callback(self, detected: list[Detected], frame):
-        f = False
+    def callback(self, detected: list[Detected], frame, source: VideoSource):
+        detects = {}
         for d in detected:
-            log.debug(f"{self.name} | {d.name} detected")
-            f = True
-        if not f:
-            log.debug(f"{self.name} | nothing detected")
+            if detects.get(d.name) is None:
+                detects[d.name] = 0
+            detects[d.name] += 1
+
+        log.info(f"{self.name} | {detects} detected from {source.name}")
+        if len(detects) < 1:
+            log.info(f"{self.name} | nothing detected from {source.name}")
 
 
 # 🟦 ВИЗУАЛИЗАЦИЯ ЗОНЫ
@@ -98,3 +153,22 @@ def draw_zones(frame, zones):
             draw_zone(frame, zone, (0, 255, 0))
         else:
             draw_zone(frame, zone, (0, 0, 255))
+
+
+class ZoneCallback:
+    def __init__(self):
+        self.devices: dict(Zone, Device)
+
+    def callback(self, detected: list[Detected], frame, source: VideoSource):
+        detects = {}
+        for d in detected:
+            if detects.get(d.name) is None:
+                detects[d.name] = 0
+            detects[d.name] += 1
+
+        log.info(f"{self.name} | {detects} detected from {source.name}")
+        if len(detects) < 1:
+            log.info(f"{self.name} | nothing detected from {source.name}")
+
+    def add_device(self, device: Device, zone: Zone):
+        self.devices[zone] = device

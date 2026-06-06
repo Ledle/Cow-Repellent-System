@@ -1,9 +1,12 @@
 import logging
 import sys
 
-# logger.py
-import logging
-import sys
+log_levels = {
+    "info": logging.INFO,
+    "debug": logging.DEBUG,
+    "critical": logging.CRITICAL,
+    "warning": logging.WARNING,
+}
 
 
 def setup_logging(

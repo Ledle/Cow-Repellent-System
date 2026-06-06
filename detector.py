@@ -1,10 +1,11 @@
-from ultralytics import YOLO  # type: ignore
-from zone import *
-import threading
 import logging
+import threading
 
+from ultralytics import YOLO  # type: ignore
 
-log = logging.getLogger()
+from source import VideoSource
+
+log = logging.getLogger("Detector")
 
 
 class Detected:
@@ -14,23 +15,32 @@ class Detected:
 
 
 class Detector:
-    def __init__(self, model: YOLO, video_source, callback, allowed_classes):
-        self.model = model
+    def __init__(
+        self, model: YOLO, video_source: VideoSource, callback, allowed_classes
+    ):
         self.source = video_source
+        self._frame_generator = None
         self.current_image = None
         self.current_boxes = set()
         self.callback = callback
         self.allowed_classes = allowed_classes
         self.running = False
+        self.model = model
 
     def track(self, frame):
         return self.model.track(frame, show=False, stream=True, persist=True)
 
     def _start_tracking(self):
+        self.source.start_reading()
+        self.source.ready.wait()
+        self._frame_generator = self.source.frame_generator()
         while self.running:
-            frame = next(self.source)
-            results = self.track(frame)
-            self._handle_results(results)
+            frame = next(self._frame_generator)
+            if frame is not None:
+                results = self.track(frame)
+                self._handle_results(results)
+            else:
+                log.info("nothing frame, waiting...")
 
     def _handle_results(self, results):
         for result in results:
@@ -46,12 +56,15 @@ class Detector:
                     ):
                         detected.append(Detected(box, class_name))
 
-            stop = self.callback(detected, frame)
+            stop = self.callback(detected, frame, self.source)
             if stop:
-                break
+                self.running = False
 
     def start_tracking(self):
         self.thread = threading.Thread(target=self._start_tracking)
+        log.info(f"thread {self.thread.name} starting...")
         self.running = True
         self.thread.start()
-        log.info(f"thread {self.thread.name} started")
+
+    def pause_tracking(self):
+        self.running = False

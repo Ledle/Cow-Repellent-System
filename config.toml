@@ -1,0 +1,43 @@
+[model]
+name = "yolo26l"
+fuse = true
+test = true
+
+[application]
+enable-web-ui = true
+enable-config-api = false
+logging-level = "info"
+
+[[repeller]]
+name = 'Левый отпугиватель test1'
+type = 'test'
+camera = 'cam1'
+
+[[repeller]]
+name = 'Правый отпугиватель test1'
+type = 'test'
+camera = 'cam1'
+
+[[repeller]]
+name = 'Левый отпугиватель test2'
+type = 'test'
+camera = 'cam2'
+
+[[repeller]]
+name = 'Правый отпугиватель test2'
+type = 'test'
+camera = 'cam2'
+
+[[camera]]
+name = "cam1"
+url = "rtmp://localhost/live/test"
+enable = true
+track = true
+test = true
+
+[[camera]]
+name = "cam2"
+url = "rtmp://localhost/live/test2"
+enable = false
+track = false
+ 

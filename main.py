@@ -1,65 +1,44 @@
-import cv2
 import logging
-from ultralytics import YOLO
-from zone import Zone, get_closest_zone
-from detector import Detector, Detected
-from frame_sender import SyncWSServer
-from config_api import ServerConfig
-from source import VideoSourceManager, VideoSource
-from logger import setup_logging
-from callbacks import test_callback, CliCallback
 
-setup_logging()
+from config_handlers import (
+    handler_build,
+    camera_config_handler,
+    model_config_handler,
+    application_config_handler,
+    device_config_handler,
+)
+from config import Settings
+from config_manager import AppConfigManager
+from config_api import WebConfigServer
+from frame_sender import SyncWSServer
+from source_manager import VideoSourceManager
+from detection_manager import DetectionManager
+from device_manager import DeviceManager
+from ui_server import UIServer
+
+settings = Settings()
+
+
 log = logging.getLogger()
 
-# 2. Классы для отслеживания
-# ALLOWED_CLASSES = {"car", "truck", "train", "bus", "cow"}
-ALLOWED_CLASSES = {"cow"}
-ALLOWED_CLASSES2 = {"car", "truck", "train", "bus", "cow"}
-
-# video_source = "example.mp4"
-video_source_url = "rtmp://localhost/live/test"
-video_source_url2 = "rtmp://localhost/live/test2"
-#video_source_url2 = "http://64.77.205.67/mjpg/video.mjpg?COUNTER"
-
-
+camera_manager = VideoSourceManager()
+detection_manager = DetectionManager()
 sender = SyncWSServer()
+config_server = WebConfigServer()
+device_manager = DeviceManager()
+ui_server = UIServer()
 
+callbacks = {
+    "application": [handler_build(application_config_handler, ui_server)],
+    "model": [handler_build(model_config_handler, detection_manager)],
+    "camera": [handler_build(camera_config_handler, camera_manager, detection_manager)],
+    "repeller": [
+        handler_build(device_config_handler, device_manager, detection_manager)
+    ],
+}
+callbacks_priority = ["application", "model", "repeller", "camera"]
 
-def callback(detected, frame):
-    test_callback(detected, frame, sender)
-
-
-cli_callback1 = CliCallback("thread 1")
-cli_callback2 = CliCallback("thread 2")
-
-config_server = ServerConfig()
-source1 = VideoSource(video_source_url, "first source")
-source2 = VideoSource(video_source_url2, "second source")
-model = YOLO("yolo26m")
-model.fuse()
-
-
-def test_gen():
-    cap = cv2.VideoCapture(video_source_url)
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        yield frame
-
-
-# source1.start_reading()
-# Инициализация отправщика
-detector = Detector(
-    model, source1.frame_generator(), cli_callback1.cli_callback, ALLOWED_CLASSES
-)
-detector2 = Detector(
-    model, source2.frame_generator(), cli_callback2.cli_callback, ALLOWED_CLASSES2
-)
-
-# sender.start()
-# config_server.start()
-detector.start_tracking()
-detector2.start_tracking()
-detector2.thread.join()
+config_manager = AppConfigManager(settings, callbacks)
+config_manager.update_all(callbacks_priority)
+detection_manager.start()
+detection_manager.join_trackers()
