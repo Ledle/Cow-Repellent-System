@@ -54,4 +54,8 @@ class ApplicationManager:
             "detectors": self.detection_manager.serialize_detectors(),
             "device_mappings": self.detection_manager.serialize_device_mapping(),
             "detection_enabled": self.detection_manager.running,
+<<<<<<< HEAD
         }
+=======
+        }
+>>>>>>> a64d844d2d9aae50b9ebb734136786859e6d59ff
