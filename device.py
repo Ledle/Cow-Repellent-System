@@ -8,6 +8,7 @@ class Device:
     def __init__(self, name, url=""):
         self.id = uuid.uuid4()
         self.name = name if name is not len(name) > 0 else self.id
+        self.url = url
 
     def on(self):
         log.info(f"device {self.name} activated")

@@ -22,7 +22,7 @@ class ApplicationManager:
         self.video_source_manager = video_source_manager or VideoSourceManager()
         self.detection_manager = detection_manager or DetectionManager()
         self.device_manager = device_manager or DeviceManager()
-        self.ui_server = ui_server or UIServer()
+        self.ui_server = ui_server or UIServer(self)
 
     def get_status(self) -> dict:
         """

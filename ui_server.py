@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw
+from application_manager import ApplicationManager
 
 
 # === PYDANTIC МОДЕЛИ (Оставлены на уровне модуля для корректной работы FastAPI) ===
@@ -73,9 +74,9 @@ PARENT_DIR: str = "front/"
 
 
 class UIServer:
-    def __init__(self):
+    def __init__(self, app_manager: ApplicationManager):
         self.app = FastAPI(title="VisionGuard UI Server")
-
+        self.application_manager = app_manager
         # Инициализация состояния (вместо глобальных переменных)
         self.device_counter = 3
         self.camera_counter = 3
@@ -159,6 +160,7 @@ class UIServer:
         # --- REST API: УСТРОЙСТВА ---
         @app.get("/api/devices")
         async def get_devices():
+            return self.application_manager.device_manager.get_devices()
             return list(self.DEVICES.values())
 
         @app.post("/api/devices")
