@@ -16,3 +16,14 @@ class DeviceManager:
 
     def get_devices(self):
         return self.devices
+
+    def serialize_device(self, device: Device) -> dict:
+        """Serialize a Device object to a dictionary."""
+        return {
+            "id": str(device.id),
+            "name": device.name,
+        }
+
+    def serialize_devices(self) -> list[dict]:
+        """Serialize all devices to a list of dictionaries."""
+        return [self.serialize_device(device) for device in self.devices]

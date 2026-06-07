@@ -47,3 +47,15 @@ class VideoSourceManager:
         match key:
             case "enable":
                 self.toggle_source(source, value)
+
+    def serialize_source(self, source: VideoSource) -> dict:
+        """Serialize a VideoSource object to a dictionary."""
+        return {
+            "name": source.name,
+            "source_url": source.source_url,
+            "enabled": source.enabled,
+        }
+
+    def serialize_sources(self) -> list[dict]:
+        """Serialize all sources to a list of dictionaries."""
+        return [self.serialize_source(source) for source in self.sources]
