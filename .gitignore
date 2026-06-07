@@ -1,3 +1,1 @@
-(application_manager.py, config_manager.py, detection_manager.py, device_manager.py, source_manager.py are all source code files, and there are no build artifacts, dependencies, or temporary files in the changes)
-
-(empty — output nothing)
+*.pt
