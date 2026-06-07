@@ -4,6 +4,7 @@ from typing import Callable
 
 class AppConfigManager:
     def __init__(self, settings: config.Settings, callbacks={}):
+        self._settings = settings
         self._config = settings.model_dump()
         self._callbacks = callbacks
 
@@ -35,6 +36,14 @@ class AppConfigManager:
                     c(v)
             else:
                 c(val)
+
+    def serialize_config(self) -> dict:
+        """Serialize the configuration to a dictionary."""
+        return self._config
+
+    def serialize_settings(self) -> dict:
+        """Serialize the Pydantic settings model to a dictionary."""
+        return self._settings.model_dump()
 
 
 def sort_by_order(a, b):
