@@ -84,3 +84,28 @@ class DetectionManager:
         if self._devices.get(source_name) is None:
             self._devices[source_name] = list()
         self._devices[source_name].append(device)
+
+    def serialize_detector(self, detector: Detector) -> dict:
+        """Serialize a Detector object to a dictionary."""
+        return {
+            "source_name": detector.source.name if hasattr(detector, 'source') and detector.source else None,
+            "running": detector.running if hasattr(detector, 'running') else False,
+            "allowed_classes": list(detector.allowed_classes) if hasattr(detector, 'allowed_classes') else [],
+        }
+
+    def serialize_detectors(self) -> list[dict]:
+        """Serialize all detectors to a list of dictionaries."""
+        return [self.serialize_detector(detector) for detector in self._detectors.values()]
+
+    def serialize_device_mapping(self) -> dict:
+        """Serialize device mappings to a dictionary."""
+        result = {}
+        for source_name, devices in self._devices.items():
+            result[source_name] = [
+                {
+                    "id": str(device.id),
+                    "name": device.name,
+                }
+                for device in devices
+            ]
+        return result
