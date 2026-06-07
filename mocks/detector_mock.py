@@ -3,8 +3,8 @@ import random
 
 from ultralytics import YOLO  # type: ignore
 
-from source import VideoSource
-from detector import Detected, Detector
+from objects.source import VideoSource
+from objects.detector import Detected, Detector
 import time
 
 log = logging.getLogger("DetectorMock")

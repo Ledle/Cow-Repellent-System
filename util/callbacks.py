@@ -1,9 +1,9 @@
-from detector import Detected
+from objects.detector import Detected
 from zone import Zone, get_closest_zone
 import cv2
 import logging
-from source import VideoSource
-from device import Device
+from objects.source import VideoSource
+from objects.device import Device
 from zone import Zone
 
 log = logging.getLogger()

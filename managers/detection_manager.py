@@ -2,11 +2,11 @@ import logging
 from threading import Thread
 
 from ultralytics import YOLO
-from callbacks import DeviceCallback
-from detector import Detector
-from source import VideoSource
-from device import Device
-from detector_mock import DetectorMock
+from util.callbacks import DeviceCallback
+from objects.detector import Detector
+from objects.source import VideoSource
+from objects.device import Device
+from mocks.detector_mock import DetectorMock
 
 log = logging.getLogger("DetectionManager")
 

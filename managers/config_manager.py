@@ -1,9 +1,9 @@
-import config
+import util.config
 from typing import Callable
 
 
 class AppConfigManager:
-    def __init__(self, settings: config.Settings, callbacks={}):
+    def __init__(self, settings: util.config.Settings, callbacks={}):
         self._settings = settings
         self._config = settings.model_dump()
         self._callbacks = callbacks

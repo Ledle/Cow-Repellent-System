@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-import detector_mock
+import mocks.detector_mock
 from logger import log_levels, setup_logging
 from application_manager import ApplicationManager
 from typing import Callable
@@ -39,7 +39,7 @@ def model_config_handler(value: dict, app_manager: ApplicationManager):
             fuse = value.get("fuse") if not value.get("fuse") is None else True
             app_manager.detection_manager.set_model(get_model(value["name"], fuse))
         if value["test_delay"]:
-            detector_mock.DELAY = value["test_delay"]
+            mocks.detector_mock.DELAY = value["test_delay"]
 
 
 def application_config_handler(value: dict, app_manager: ApplicationManager):

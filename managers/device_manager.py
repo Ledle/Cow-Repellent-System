@@ -1,6 +1,6 @@
 import logging
 
-from device import Device
+from objects.device import Device
 
 log = logging.getLogger("Device")
 

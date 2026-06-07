@@ -1,5 +1,5 @@
-from source import VideoSource
-from source_mock import VideoSourceMock
+from objects.source import VideoSource
+from mocks.source_mock import VideoSourceMock
 
 
 class VideoSourceManager:

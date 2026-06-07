@@ -1,17 +1,17 @@
 import logging
 
-from config_handlers import (
+from util.config_handlers import (
     handler_build,
     camera_config_handler,
     model_config_handler,
     application_config_handler,
     device_config_handler,
 )
-from config import Settings
-from config_manager import AppConfigManager
-from config_api import WebConfigServer
-from frame_sender import SyncWSServer
-from application_manager import ApplicationManager
+from util.config import Settings
+from managers.config_manager import AppConfigManager
+from util.config_api import WebConfigServer
+from util.frame_sender import SyncWSServer
+from managers.application_manager import ApplicationManager
 
 settings = Settings()
 

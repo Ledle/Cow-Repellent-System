@@ -2,7 +2,7 @@ import logging
 from source_manager import VideoSourceManager
 from detection_manager import DetectionManager
 from device_manager import DeviceManager
-from ui_server import UIServer
+from managers.ui_server import UIServer
 
 log = logging.getLogger("ApplicationManager")
 
@@ -54,8 +54,4 @@ class ApplicationManager:
             "detectors": self.detection_manager.serialize_detectors(),
             "device_mappings": self.detection_manager.serialize_device_mapping(),
             "detection_enabled": self.detection_manager.running,
-<<<<<<< HEAD
         }
-=======
-        }
->>>>>>> a64d844d2d9aae50b9ebb734136786859e6d59ff

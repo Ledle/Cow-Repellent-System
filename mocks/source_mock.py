@@ -3,12 +3,12 @@ import time
 
 import cv2
 
-import source
+import objects.source
 
 log = logging.getLogger("VideoSourceMock")
 
 
-class VideoSourceMock(source.VideoSource):
+class VideoSourceMock(objects.source.VideoSource):
     i = 0
 
     def __init__(self, source: str = "test.mp4", name: str = None):
