@@ -43,3 +43,15 @@ class ApplicationManager:
         Returns a string with the application name.
         """
         return "VisionGuard Application"
+
+    def serialize(self) -> dict:
+        """Serialize the entire application state to a dictionary."""
+        return {
+            "name": self.get_name(),
+            "status": "running",
+            "video_sources": self.video_source_manager.serialize_sources(),
+            "devices": self.device_manager.serialize_devices(),
+            "detectors": self.detection_manager.serialize_detectors(),
+            "device_mappings": self.detection_manager.serialize_device_mapping(),
+            "detection_enabled": self.detection_manager.running,
+        }
