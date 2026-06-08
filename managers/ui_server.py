@@ -5,6 +5,8 @@ import json
 import random
 import time
 import uuid
+import cv2
+import numpy as np
 from datetime import datetime
 from typing import List, Optional
 
@@ -13,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw
-from application_manager import ApplicationManager
+from .application_manager import ApplicationManager
 
 
 # === PYDANTIC МОДЕЛИ (Оставлены на уровне модуля для корректной работы FastAPI) ===
@@ -160,38 +162,36 @@ class UIServer:
         # --- REST API: УСТРОЙСТВА ---
         @app.get("/api/devices")
         async def get_devices():
-            return self.application_manager.device_manager.get_devices()
-            return list(self.DEVICES.values())
+            manager = self.application_manager.device_manager
+            return manager.serialize_devices()
 
         @app.post("/api/devices")
         async def create_device(device: DeviceCreate):
-            dev_id = f"dev_{self.device_counter:02d}"
-            self.device_counter += 1
-
-            new_device = device.dict()
-            new_device["id"] = dev_id
-            self.DEVICES[dev_id] = new_device
-
-            return {"status": "created", "id": dev_id}
+            manager = self.application_manager.device_manager
+            device = manager.make_device_from_dict(device.dict())
+            return {"status": "created", "id": device.id}
 
         @app.put("/api/devices/{device_id}")
         async def update_device(device_id: str, device: DeviceUpdate):
-            if device_id not in self.DEVICES:
+            manager = self.application_manager.device_manager
+            d = manager.get_device_by_id(device_id)
+            if d is None:
                 raise HTTPException(status_code=404, detail="Устройство не найдено")
 
-            d = self.DEVICES[device_id]
             if device.name is not None:
-                d["name"] = device.name
+                d.name = device.name
             if device.url is not None:
-                d["url"] = device.url
+                d.url = device.url
             if device.enable is not None:
-                d["enable"] = device.enable
+                manager.toggle_device(d, device.enable)
 
-            return {"status": "updated", "id": device_id}
+            return {"status": "updated", "id": d.id}
 
         @app.delete("/api/devices/{device_id}")
         async def delete_device(device_id: str):
-            if device_id not in self.DEVICES:
+            manager = self.application_manager.device_manager
+            d = manager.get_device_by_id(device_id)
+            if d is None:
                 raise HTTPException(status_code=404, detail="Устройство не найдено")
 
             for zones in self.ZONES.values():
@@ -199,20 +199,17 @@ class UIServer:
                     if device_id in z["linked_devices"]:
                         z["linked_devices"].remove(device_id)
 
-            del self.DEVICES[device_id]
             return {"status": "deleted", "id": device_id}
 
     def _setup_system_routes(self, app):
         @app.get("/api/system/status")
         async def get_system_status():
-            camera_list = [
-                {"id": cam_id, "name": data["name"]}
-                for cam_id, data in self.CAMERAS.items()
-            ]
+            manager = self.application_manager.video_source_manager
+            camera_list = manager.serialize_sources()
             return {
-                "name": "VisionGuard Demo 2026",
-                "uptime": "14д 2ч 15м",
-                "status": "OK",
+                "name": self.application_manager.get_name(),
+                "uptime": self.application_manager.get_uptime(),
+                "status": self.application_manager.get_status(),
                 "cameras": camera_list,
             }
 
@@ -220,35 +217,40 @@ class UIServer:
         # --- REST API: КАМЕРЫ ---
         @app.get("/api/camera/{camera_id}")
         async def get_camera(camera_id: str):
-            if camera_id not in self.CAMERAS:
+            manager = self.application_manager.video_source_manager
+            s = manager.get_source_by_id(camera_id)
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
-            return {"id": camera_id, **self.CAMERAS[camera_id]}
+            return manager.serialize_source(s)
 
         @app.get("/api/camera/{camera_id}/info")
         async def get_camera_info(camera_id: str):
-            if camera_id not in self.CAMERAS:
+            manager = self.application_manager.video_source_manager
+            s = manager.get_source_by_id(camera_id)
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
-            cam_data = self.CAMERAS[camera_id]
+            width, height = s.get_resolution()
+            resolution = f"{str(width)}x{str(height)}"
             return {
-                "socketUrl": f"ws://localhost:8000/ws/{camera_id}",
-                "resolution": cam_data.get("resolution", "1920x1080"),
-                "fps": cam_data.get("fps", 30),
+                "socketUrl": f"ws://localhost:8000/ws/{s.id}",
+                "resolution": resolution,
+                "fps": s.get_fps(),
+                "enabled": s.enabled
             }
 
         @app.post("/api/camera")
         async def create_camera(camera: CameraCreate):
-            cam_id = f"cam_{self.camera_counter:02d}"
-            self.camera_counter += 1
+            manager = self.application_manager.video_source_manager
 
-            new_camera = camera.dict()
-            self.CAMERAS[cam_id] = new_camera
-            self.ZONES[cam_id] = []
+            cam_id = manager.create_source_from_dict(camera.dict())
 
             return {"status": "created", "id": cam_id}
 
         @app.put("/api/camera/{camera_id}")
         async def update_camera(camera_id: str, camera: CameraUpdate):
-            if camera_id not in self.CAMERAS:
+            manager = self.application_manager.video_source_manager
+            s = manager.get_source_by_id(camera_id)
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
 
             cam_data = self.CAMERAS[camera_id]
@@ -259,15 +261,17 @@ class UIServer:
             if camera.test is not None:
                 cam_data["test"] = camera.test
             if camera.resolution is not None:
-                cam_data["resolution"] = camera.resolution
+                pass  # TODO
             if camera.fps is not None:
-                cam_data["fps"] = camera.fps
+                pass  # TODO
 
             return {"status": "updated", "id": camera_id}
 
         @app.delete("/api/camera/{camera_id}")
         async def delete_camera(camera_id: str):
-            if camera_id not in self.CAMERAS:
+            manager = self.application_manager.video_source_manager
+            s = manager.get_source_by_id(camera_id)
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
 
             if camera_id in self.ACTIVE_WEBSOCKETS:
@@ -279,7 +283,7 @@ class UIServer:
                     pass
                 del self.ACTIVE_WEBSOCKETS[camera_id]
 
-            del self.CAMERAS[camera_id]
+            manager.remove_source(s)
             self.ZONES.pop(camera_id, None)
             self.LAST_FRAMES.pop(camera_id, None)
 
@@ -289,39 +293,48 @@ class UIServer:
         # --- REST API: ЗОНЫ ---
         @app.get("/api/camera/{camera_id}/zones")
         async def get_zones(camera_id: str):
-            if camera_id not in self.CAMERAS:
+            src_manager = self.application_manager.video_source_manager
+            detection_manager = self.application_manager.detection_manager
+            s = src_manager.get_source_by_id(camera_id)
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
 
-            zones = self.ZONES.get(camera_id, [])
+            zones = detection_manager.get_source_zones(s)
             enriched_zones = []
-            for z in zones:
-                enriched = z.copy()
-                enriched["linked_devices_info"] = [
-                    self.DEVICES.get(d_id)
-                    for d_id in z["linked_devices"]
-                    if d_id in self.DEVICES
-                ]
-                enriched_zones.append(enriched)
-            return enriched_zones
+            #for z in zones:
+            #    enriched = z.copy()
+            #    enriched["linked_devices_info"] = [
+            #        self.DEVICES.get(d_id)
+            #        for d_id in z["linked_devices"]
+            #        if d_id in self.DEVICES
+            #    ]
+            #    enriched_zones.append(enriched)
+            return detection_manager.serialize_zones(zones)
 
         @app.post("/api/camera/{camera_id}/zone")
         async def create_zone(camera_id: str, zone: ZoneCreate):
-            if camera_id not in self.CAMERAS:
+            src_manager = self.application_manager.video_source_manager
+            s = src_manager.get_source_by_id(camera_id)
+            dev_manager = self.application_manager.device_manager
+            detect_manager = self.application_manager.detection_manager
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
             if len(zone.points) < 3:
                 raise HTTPException(status_code=400, detail="Минимум 3 точки")
 
             for dev_id in zone.linked_devices:
-                if dev_id not in self.DEVICES:
+                dev = dev_manager.get_device_by_id(dev_id)
+                if dev is None:
                     raise HTTPException(
                         status_code=400, detail=f"Устройство {dev_id} не найдено"
                     )
-
-            new_zone = zone.dict()
-            new_zone["id"] = str(uuid.uuid4())[:8]
-            new_zone["camera_id"] = camera_id
-
-            self.ZONES.setdefault(camera_id, []).append(new_zone)
+            data = zone.dict()
+            data["camera"] = src_manager.get_source_by_id(camera_id)
+            data["linked_devices"] = dev_manager.get_devices_by_id(data["linked_devices"])
+            z = detect_manager.add_zone_from_dict(data)
+            new_zone = detect_manager.serialize_zone(z)
+            new_zone["camera_id"]=camera_id
+            
             return new_zone
 
         @app.put("/api/zone/{zone_id}")
@@ -372,26 +385,33 @@ class UIServer:
         # --- WEBSOCKET И КАДРЫ ---
         @app.get("/api/camera/{camera_id}/last-frame")
         async def get_last_frame(camera_id: str):
-            if camera_id not in self.CAMERAS:
+            manager = self.application_manager.video_source_manager
+            s = manager.get_source_by_id(camera_id)
+            if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
-            if not self.LAST_FRAMES.get(camera_id):
+
+            last_frame = self._convert_frame(s.get_frame())
+            if not last_frame:
                 raise HTTPException(status_code=404, detail="Кадр ещё не получен")
-            return {"frame": self.LAST_FRAMES[camera_id]}
+            return {"frame": last_frame}
 
         @app.websocket("/ws/{camera_id}")
         async def websocket_endpoint(websocket: WebSocket, camera_id: str):
             await websocket.accept()
-            if camera_id not in self.CAMERAS:
+            manager = self.application_manager.video_source_manager
+            s = manager.get_source_by_id(camera_id)
+            if s is None:
                 await websocket.close(code=1008, reason="Camera not found")
                 return
 
             self.ACTIVE_WEBSOCKETS[camera_id] = websocket
             try:
                 while True:
-                    if camera_id not in self.CAMERAS:
+                    if s is None:
                         break
 
-                    frame_url, detections_count = self._generate_frame(camera_id)
+                    frame_url  = self._convert_frame(camera_id,s.get_frame())
+                    detections_count = random.randint(1,4)
                     self.LAST_FRAMES[camera_id] = frame_url
 
                     await websocket.send_text(
@@ -403,7 +423,7 @@ class UIServer:
                             }
                         )
                     )
-                    await asyncio.sleep(0.15)
+                    await asyncio.sleep(1/s.get_fps())
             except WebSocketDisconnect:
                 print(f"Клиент отключился от камеры {camera_id}")
             except Exception as e:
@@ -415,6 +435,7 @@ class UIServer:
                 ):
                     del self.ACTIVE_WEBSOCKETS[camera_id]
                 try:
+                    print("closing websocket because...")
                     await websocket.close()
                 except Exception:
                     pass
@@ -442,6 +463,67 @@ class UIServer:
         img.save(buffered, format="JPEG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         return f"data:image/jpeg;base64,{img_str}", detections_count
+
+    def _convert_frame(self, camera_id: str, frame: np.ndarray) -> tuple:
+        """Внутренний метод для конвертации cv2 кадра в base64 формат с наложением данных"""
+        cam_data = self.CAMERAS.get(camera_id, {"name": "Unknown Camera"})
+
+        # Создаем копию кадра, чтобы не модифицировать оригинальный numpy-массив
+        img = frame.copy()
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # OpenCV использует BGR, но (0, 255, 0) - это зеленый, а (200, 200, 200) - серый (как и в RGB)
+        # Координаты в putText указывают на левый нижний угол строки текста
+        cv2.putText(
+            img,
+            cam_data.get("name", "Camera"),
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2,
+        )
+        cv2.putText(
+            img,
+            f"Time: {timestamp}",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (200, 200, 200),
+            1,
+        )
+
+        detections_count = random.randint(0, 3)
+        for _ in range(detections_count):
+            # Ограничения координат оставлены как в оригинале (предполагается кадр не менее ~300x300)
+            x1, y1 = random.randint(50, 250), random.randint(50, 200)
+            x2, y2 = x1 + random.randint(40, 80), y1 + random.randint(60, 120)
+
+            # Рисуем прямоугольник (x1, y1) - верхний левый, (x2, y2) - нижний правый
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # Рисуем текст над прямоугольником (защита max() от выхода координат за верхнюю границу кадра)
+            text_y = max(20, y1 - 5)
+            cv2.putText(
+                img,
+                f"Person {random.randint(85, 99)}%",
+                (x1, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+            )
+
+        # Кодирование в JPEG
+        success, buffer = cv2.imencode(".jpg", img)
+        if not success:
+            raise ValueError("Не удалось закодировать изображение в JPEG")
+
+        # Конвертация байтов буфера в base64 строку
+        img_str = base64.b64encode(buffer.tobytes()).decode("utf-8")
+
+        return f"data:image/jpeg;base64,{img_str}"
 
     def run(self, host: str = "0.0.0.0", port: int = 8000):
         """Метод для запуска сервера"""

@@ -1,8 +1,8 @@
 import logging
-from source_manager import VideoSourceManager
-from detection_manager import DetectionManager
-from device_manager import DeviceManager
-from managers.ui_server import UIServer
+from .source_manager import VideoSourceManager
+from .detection_manager import DetectionManager
+from .device_manager import DeviceManager
+from datetime import datetime, timedelta
 
 log = logging.getLogger("ApplicationManager")
 
@@ -17,25 +17,29 @@ class ApplicationManager:
         video_source_manager: VideoSourceManager = None,
         detection_manager: DetectionManager = None,
         device_manager: DeviceManager = None,
-        ui_server: UIServer = None,
     ):
+        self.ui=False
         self.video_source_manager = video_source_manager or VideoSourceManager()
         self.detection_manager = detection_manager or DetectionManager()
         self.device_manager = device_manager or DeviceManager()
-        self.ui_server = ui_server or UIServer(self)
+        self.start_time = datetime.now()
 
-    def get_status(self) -> dict:
+    def get_uptime(self) -> str:
+        return self._time_since()
+        
+    def get_status(self) -> str:
         """
         Dummy method for retrieving the current status of the application.
         Returns a dictionary with status information.
         """
-        return {
-            "name": self.get_name(),
-            "status": "running",
-            "video_sources_count": len(self.video_source_manager.sources),
-            "devices_count": len(self.device_manager.devices),
-            "detection_enabled": self.detection_manager.running,
-        }
+        return "ok"
+        #return {
+        #    "name": self.get_name(),
+        #    "status": "running",
+        #    "video_sources_count": len(self.video_source_manager.sources),
+        #    "devices_count": len(self.device_manager.devices),
+        #    "detection_enabled": self.detection_manager.running,
+        #}
 
     def get_name(self) -> str:
         """
@@ -55,3 +59,31 @@ class ApplicationManager:
             "device_mappings": self.detection_manager.serialize_device_mapping(),
             "detection_enabled": self.detection_manager.running,
         }
+
+    def _time_since(self) -> str:
+        """
+        Возвращает строку с временем, прошедшим с start_time до текущего момента.
+
+        :param start_time: datetime — начальный момент
+        :return: str — например "2 days, 3:15:42"
+        """
+        now = datetime.now()
+        delta: timedelta = now - self.start_time
+
+        days = delta.days
+        seconds = delta.seconds
+
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        seconds = seconds % 60
+
+        parts = []
+        if days > 0:
+            parts.append(f"{days} дн.")
+        if hours > 0 or days > 0:
+            parts.append(f"{hours} ч.")
+        if minutes > 0 or hours > 0 or days > 0:
+            parts.append(f"{minutes} мин.")
+        parts.append(f"{seconds} сек.")
+
+        return " ".join(parts)

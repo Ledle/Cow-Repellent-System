@@ -4,7 +4,7 @@ from typing import Callable
 
 class AppConfigManager:
     def __init__(self, settings: util.config.Settings, callbacks={}):
-        self._settings = settings
+     
         self._config = settings.model_dump()
         self._callbacks = callbacks
 
