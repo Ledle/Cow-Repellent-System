@@ -442,6 +442,7 @@ async function init() {
         container.innerHTML = '';
         zones.forEach(z => {
             const item = document.createElement('div');
+	    z.color = '#00ff00'
             item.className = 'zone-item';
             item.innerHTML = `
                 <div class="zone-item-header">
@@ -480,6 +481,7 @@ async function init() {
 
         // Рисуем сохранённые зоны
         zones.forEach(z => {
+	    z.color = '#00ff00'
             const pointsStr = z.points.map(p => `${p.x},${p.y}`).join(' ');
             const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
             poly.setAttribute('points', pointsStr);

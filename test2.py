@@ -1,18 +1,7 @@
-from functools import cached_property
+from ultralytics import YOLO
 
-
-class Config:
-    @cached_property
-    def expensive_value(self):
-        print("Вычисляем...")
-        return sum(range(10_000_000))
-
-    def get_value(self):
-        return self.expensive_value
-
-
-cfg = Config()
-
-print("Объект создан")
-print(cfg.get_value())  # вычисление происходит здесь
-print(cfg.expensive_value)  # берётся из кэша
+src = "rtmp://localhost/live/test2"
+model = YOLO("yolo26s")
+model.fuse()
+#model.track(source=src,imgsz=(1280,720), show=True)
+model.track(source=src, imgsz=240,iou=1, show=True, batch=3)

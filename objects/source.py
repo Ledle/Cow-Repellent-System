@@ -3,6 +3,7 @@ import threading
 import logging
 import time
 import os
+from datetime import datetime
 
 
 log = logging.getLogger("VideoSource")
@@ -10,6 +11,7 @@ log = logging.getLogger("VideoSource")
 
 class VideoSource:
     def __init__(self, source: str, name: str):
+        self.id = None
         self.source_url = source
         self.name = name
         self._lock = threading.Lock()
@@ -17,7 +19,11 @@ class VideoSource:
         self._latest_frame = None
         self._cap = None
         self.ready = threading.Event()
+        self._frame_timestamp = datetime.now()
 
+    def get_frame_with_timestamp(self):
+        with self._lock:
+            return (self._latest_frame, self._frame_timestamp)
     def get_frame(self):
         with self._lock:
             return self._latest_frame
@@ -36,8 +42,13 @@ class VideoSource:
             with self._lock:
                 log.debug("frame set")
                 self._latest_frame = frame
+                self._frame_timestamp = datetime.now()
             if not self.ready.is_set():
                 self.ready.set()
+
+    def get_frame_timestamp(self):
+        with self._lock:
+            return self._frame_timestamp
 
     def start_reading(self):
         self.enabled = True
@@ -62,11 +73,24 @@ class VideoSource:
         if not self.enabled:
             log.debug("starting reading")
             self.start_reading()
+        timestamp = None
         while self.enabled:
-            frame = self.get_frame()
-            # log.debug(f"yielding frame... {frame}")
+            frame,s = self.get_frame_with_timestamp()
+            while timestamp == s:
+                frame,s = self.get_frame_with_timestamp()
+                if timestamp == s:
+                    time.sleep(1/self.get_fps())
+            timestamp = s
             yield frame
         log.debug("self not running")
+
+    def get_resolution(self):
+        width = self._get_cap().get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = self._get_cap().get(cv2.CAP_PROP_FRAME_HEIGHT)
+        return (width, height)
+
+    def get_fps(self):
+        return self._get_cap().get(cv2.CAP_PROP_FPS)
 
 
 def source_from_dict(data: dict) -> VideoSource:

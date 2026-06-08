@@ -1,9 +1,7 @@
 import logging
 import threading
 
-from ultralytics import YOLO  # type: ignore
-
-from source import VideoSource
+from .source import VideoSource
 
 log = logging.getLogger("Detector")
 
@@ -16,16 +14,17 @@ class Detected:
 
 class Detector:
     def __init__(
-        self, model: YOLO, video_source: VideoSource, callback, allowed_classes
+        self, model, video_source: VideoSource, callback, allowed_classes
     ):
         self.source = video_source
         self._frame_generator = None
-        self.current_image = None
+        self.last_frame = None
         self.current_boxes = set()
         self.callback = callback
         self.allowed_classes = allowed_classes
         self.running = False
         self.model = model
+        self.last_detections: list[Detected]
 
     def track(self, frame):
         return self.model.track(frame, show=False, stream=True, persist=True)
@@ -56,6 +55,9 @@ class Detector:
                     ):
                         detected.append(Detected(box, class_name))
 
+            print("setting last detections...")
+            self.last_detections = detected
+            self.last_frame = frame
             stop = self.callback(detected, frame, self.source)
             if stop:
                 self.running = False

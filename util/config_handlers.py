@@ -1,25 +1,23 @@
-from ultralytics import YOLO
-
 import mocks.detector_mock
-from logger import log_levels, setup_logging
-from application_manager import ApplicationManager
+from .logger import log_levels, setup_logging
+from managers.application_manager import ApplicationManager
 from typing import Callable
 import logging
-import threading
 
 log = logging.getLogger("Config")
 
 
 def camera_config_handler(value: dict, app_manager: ApplicationManager):
     log.debug("handling camera")
-    camera, cfgs = app_manager.video_source_manager.get_source_from_dict(value)
-    for c in cfgs:
-        app_manager.video_source_manager.config_source(camera, c, cfgs[c])
+    src_manager = app_manager.video_source_manager
+    id = src_manager.create_source_from_dict(value)
+    camera = src_manager.get_source_by_id(id)
     if value["track"]:
         app_manager.detection_manager.make_detection(camera)
 
 
 def get_model(name, fuse=True):
+    from ultralytics import YOLO
     log.info("loading model...")
     model = YOLO(name)
     if fuse:
@@ -45,9 +43,8 @@ def model_config_handler(value: dict, app_manager: ApplicationManager):
 def application_config_handler(value: dict, app_manager: ApplicationManager):
     log.debug("handling app")
     setup_logging(level=log_levels[value["logging_level"]])
-    if value["enable_web_ui"]:
-        server = threading.Thread(target=app_manager.ui_server.run)
-        server.start()
+    app_manager.ui = value["enable_web_ui"] or False
+     
 
 
 def device_config_handler(value: dict, app_manager: ApplicationManager):

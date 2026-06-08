@@ -1,10 +1,9 @@
 from objects.detector import Detected
-from zone import Zone, get_closest_zone
+from objects.zone import Zone, get_closest_zone
 import cv2
 import logging
 from objects.source import VideoSource
 from objects.device import Device
-from zone import Zone
 
 log = logging.getLogger()
 # 3. Координаты зоны контроля
@@ -156,19 +155,47 @@ def draw_zones(frame, zones):
 
 
 class ZoneCallback:
-    def __init__(self):
-        self.devices: dict(Zone, Device)
+    def __init__(
+        self,
+        devices: list[Device] = [],
+        whitelist: list[str] = [],
+        blocklist: list[str] = [],
+    ):
+        self._devices = devices
+        self.whitelist = whitelist
+        self.blocklist = blocklist
+        self._zone_devices: dict[Zone, Device] = dict()
+        #self._to_off = {d: 5 for d in self._devices}
+
+    def has_zone(self, zone: Zone):
+        return any(zone.id == z.id for z in self._zone_devices.keys())
+    def turn_off_all(self):
+        for device in self.devices:
+            device.off()
+            #self._to_off[device] = 5
+
+    def add_zone(self, zone:Zone):
+        self._zone_devices[zone]=[]
+
+    def add_device_to_zone(self, zone:Zone, device: Device):
+        self._zone_devices[zone].append(device)
 
     def callback(self, detected: list[Detected], frame, source: VideoSource):
-        detects = {}
+        to_enable = []
         for d in detected:
-            if detects.get(d.name) is None:
-                detects[d.name] = 0
-            detects[d.name] += 1
+            if d.name in self.whitelist:
+                if self._zone_devices.keys():
+                    zone = get_closest_zone(d.box, self._zone_devices.keys())
+                    to_enable.extend(self._zone_devices[zone])
+            if d.name in self.blocklist:
+                log.info(f"обнаружен {d.name}! отключение отпугивателей")
+                to_enable.clear()
+                break
 
-        log.info(f"{self.name} | {detects} detected from {source.name}")
-        if len(detects) < 1:
-            log.info(f"{self.name} | nothing detected from {source.name}")
+        for device in self._devices:
+            if device in to_enable:
+                device.on()
+            else:
+                device.off()
 
-    def add_device(self, device: Device, zone: Zone):
-        self.devices[zone] = device
+

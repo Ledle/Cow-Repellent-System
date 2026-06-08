@@ -6,6 +6,8 @@ class Zone:
     def __init__(self, coords: list[int]):
         self.coords = self._get_np_array(coords)
         self.active = False
+        self.id = None
+        self.name = ""
 
     def get_int_coords(self):
         res = []

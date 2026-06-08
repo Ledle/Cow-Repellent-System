@@ -1,10 +1,10 @@
 import asyncio
 import base64
 import io
+import os
 import json
 import random
 import time
-import uuid
 import cv2
 import numpy as np
 from datetime import datetime
@@ -14,7 +14,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from .application_manager import ApplicationManager
 
 
@@ -116,12 +116,12 @@ class UIServer:
         }
 
         self.ZONES = {"cam_01": [], "cam_02": []}
-        self.LAST_FRAMES = {}
         self.ACTIVE_WEBSOCKETS = {}
 
         # Настройка приложения
         self._setup_cors()
         self._setup_routes()
+        self._load_fonts()
 
     def _setup_cors(self):
         self.app.add_middleware(
@@ -235,7 +235,7 @@ class UIServer:
                 "socketUrl": f"ws://localhost:8000/ws/{s.id}",
                 "resolution": resolution,
                 "fps": s.get_fps(),
-                "enabled": s.enabled
+                "enabled": s.enabled,
             }
 
         @app.post("/api/camera")
@@ -285,7 +285,6 @@ class UIServer:
 
             manager.remove_source(s)
             self.ZONES.pop(camera_id, None)
-            self.LAST_FRAMES.pop(camera_id, None)
 
             return {"status": "deleted", "id": camera_id}
 
@@ -301,7 +300,7 @@ class UIServer:
 
             zones = detection_manager.get_source_zones(s)
             enriched_zones = []
-            #for z in zones:
+            # for z in zones:
             #    enriched = z.copy()
             #    enriched["linked_devices_info"] = [
             #        self.DEVICES.get(d_id)
@@ -330,11 +329,13 @@ class UIServer:
                     )
             data = zone.dict()
             data["camera"] = src_manager.get_source_by_id(camera_id)
-            data["linked_devices"] = dev_manager.get_devices_by_id(data["linked_devices"])
+            data["linked_devices"] = dev_manager.get_devices_by_id(
+                data["linked_devices"]
+            )
             z = detect_manager.add_zone_from_dict(data)
             new_zone = detect_manager.serialize_zone(z)
-            new_zone["camera_id"]=camera_id
-            
+            new_zone["camera_id"] = camera_id
+
             return new_zone
 
         @app.put("/api/zone/{zone_id}")
@@ -400,6 +401,7 @@ class UIServer:
             await websocket.accept()
             manager = self.application_manager.video_source_manager
             s = manager.get_source_by_id(camera_id)
+            det_manager = self.application_manager.detection_manager
             if s is None:
                 await websocket.close(code=1008, reason="Camera not found")
                 return
@@ -410,9 +412,9 @@ class UIServer:
                     if s is None:
                         break
 
-                    frame_url  = self._convert_frame(camera_id,s.get_frame())
-                    detections_count = random.randint(1,4)
-                    self.LAST_FRAMES[camera_id] = frame_url
+                    frame = det_manager.get_last_detected_frame(s)
+                    frame_url = self._convert_frame(camera_id, frame)
+                    detections_count = random.randint(1, 4)
 
                     await websocket.send_text(
                         json.dumps(
@@ -423,7 +425,7 @@ class UIServer:
                             }
                         )
                     )
-                    await asyncio.sleep(1/s.get_fps())
+                    await asyncio.sleep(1 / s.get_fps())
             except WebSocketDisconnect:
                 print(f"Клиент отключился от камеры {camera_id}")
             except Exception as e:
@@ -464,65 +466,73 @@ class UIServer:
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         return f"data:image/jpeg;base64,{img_str}", detections_count
 
-    def _convert_frame(self, camera_id: str, frame: np.ndarray) -> tuple:
-        """Внутренний метод для конвертации cv2 кадра в base64 формат с наложением данных"""
-        cam_data = self.CAMERAS.get(camera_id, {"name": "Unknown Camera"})
+    def _load_fonts(self):
+        # 2. Загрузка шрифта с поддержкой кириллицы
+        # Укажите путь к .ttf файлу, доступному в вашей ОС или проекте
+        font_path = "arial.ttf"  # Windows/macOS
+        # Для Linux/Docker: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-        # Создаем копию кадра, чтобы не модифицировать оригинальный numpy-массив
-        img = frame.copy()
+        try:
+            if os.path.exists(font_path):
+                font_large = ImageFont.truetype(font_path, 24)
+                font_small = ImageFont.truetype(font_path, 16)
+            else:
+                # Если файл не найден, пробуем системные пути или fallback
+                font_large = ImageFont.load_default()
+                font_small = ImageFont.load_default()
+        except Exception:
+            font_large = font_small = ImageFont.load_default()
+        self._font_large = font_large
+        self._font_small = font_small
+
+    def _convert_frame(self, camera_id: str, frame: np.ndarray) -> str:
+        """Конвертация cv2 кадра в base64 с поддержкой кириллицы"""
+        cam_manager = self.application_manager.video_source_manager
+        detect_manager = self.application_manager.detection_manager
+        cam = cam_manager.get_source_by_id(camera_id)
+
+        # 1. Конвертация BGR (OpenCV) -> RGB (Pillow)
+        # Pillow работает в RGB, поэтому цвета нужно корректно преобразовать
+        img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cam_name = cam.name or "Камера"
 
-        # OpenCV использует BGR, но (0, 255, 0) - это зеленый, а (200, 200, 200) - серый (как и в RGB)
-        # Координаты в putText указывают на левый нижний угол строки текста
-        cv2.putText(
-            img,
-            cam_data.get("name", "Camera"),
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2,
-        )
-        cv2.putText(
-            img,
-            f"Time: {timestamp}",
-            (10, 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (200, 200, 200),
-            1,
+        font_large = self._font_large
+        font_small = self._font_small
+        # 3. Отрисовка мета-данных (Pillow рисует от верхнего левого угла)
+        draw.text((10, 10), cam_name, font=font_large, fill=(0, 255, 0))
+        draw.text(
+            (10, 40), f"Время: {timestamp}", font=font_small, fill=(200, 200, 200)
         )
 
-        detections_count = random.randint(0, 3)
-        for _ in range(detections_count):
-            # Ограничения координат оставлены как в оригинале (предполагается кадр не менее ~300x300)
-            x1, y1 = random.randint(50, 250), random.randint(50, 200)
-            x2, y2 = x1 + random.randint(40, 80), y1 + random.randint(60, 120)
+        # 4. Отрисовка детекций
+        detections = detect_manager.get_last_detections(cam)
+        for d in detections:
+            # Приводим координаты к int (модели часто отдают float)
+            x1, y1, x2, y2 = map(int, d.box)
 
-            # Рисуем прямоугольник (x1, y1) - верхний левый, (x2, y2) - нижний правый
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            # Рамка
+            draw.rectangle([x1, y1, x2, y2], outline=(0, 255, 0), width=2)
 
-            # Рисуем текст над прямоугольником (защита max() от выхода координат за верхнюю границу кадра)
-            text_y = max(20, y1 - 5)
-            cv2.putText(
-                img,
-                f"Person {random.randint(85, 99)}%",
+            # Текст над bounding box
+            text_y = max(10, y1 - 20)  # Защита от выхода за верхнюю границу кадра
+            confidence = random.randint(85, 99)
+            draw.text(
                 (x1, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                1,
+                f"{d.name} {confidence}%",
+                font=font_small,
+                fill=(0, 255, 0),
             )
 
-        # Кодирование в JPEG
-        success, buffer = cv2.imencode(".jpg", img)
+        # 5. Конвертация обратно в BGR и кодирование в JPEG через OpenCV
+        img_cv2 = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+        success, buffer = cv2.imencode(".jpg", img_cv2)
         if not success:
             raise ValueError("Не удалось закодировать изображение в JPEG")
 
-        # Конвертация байтов буфера в base64 строку
         img_str = base64.b64encode(buffer.tobytes()).decode("utf-8")
-
         return f"data:image/jpeg;base64,{img_str}"
 
     def run(self, host: str = "0.0.0.0", port: int = 8000):

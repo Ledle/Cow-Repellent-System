@@ -163,8 +163,9 @@
                 document.getElementById('system-name').textContent = data.name || 'Система детекции';
                 document.getElementById('system-uptime').textContent = data.uptime || 'N/A';
                 const statusEl = document.getElementById('system-status');
-                statusEl.textContent = data.status === 'OK' ? 'Работает штатно' : 'Ошибка';
-                statusEl.className = `status-badge ${data.status === 'OK' ? 'status-ok' : 'status-error'}`;
+                //statusEl.textContent = data.status === 'OK' ? 'Работает штатно' : 'Ошибка';
+                statusEl.textContent = data.status;
+                statusEl.className = `status-badge ${data.status === 'ok' ? 'status-ok' : 'status-error'}`;
                 document.getElementById('last-update').textContent = new Date().toLocaleTimeString('ru-RU');
 
                 const currentIds = new Set((data.cameras || []).map(c => c.id));
@@ -231,14 +232,18 @@
         }
 
         async function setupCamera(cameraId) {
+            const statusEl = document.getElementById(`ws-status-${cameraId}`);
             try {
                 const response = await fetch(`${API_BASE_URL}/camera/${cameraId}/info`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 document.getElementById(`res-${cameraId}`).textContent = data.resolution || 'N/A';
                 document.getElementById(`fps-${cameraId}`).textContent = data.fps || 'N/A';
-                loadAndDrawZones(cameraId);
-                if (data.socketUrl) connectWebSocket(cameraId, data.socketUrl);
+		if (data.enabled){
+		    loadAndDrawZones(cameraId);
+		    if (data.socketUrl) connectWebSocket(cameraId, data.socketUrl);
+		}
+		else statusEl.textContent = "Отключено";
             } catch (error) {
                 console.error(`Ошибка настройки камеры ${cameraId}:`, error);
                 const statusEl = document.getElementById(`ws-status-${cameraId}`);
@@ -288,12 +293,15 @@
                 container.innerHTML = devices.map(d => {
                     const statusColor = d.enable ? 'var(--success-color)' : 'var(--error-color)';
                     const statusText = d.enable ? '🟢 Включено' : '🔴 Выключено';
+		    url = ''
+		    if (!d.url)
+			url = `<div class="url">${d.url}</div>`
                     return `
                     <div class="device-card">
                         <div class="device-icon">🔌</div>
                         <div class="device-info">
                             <div class="name">${d.name}</div>
-                            <div class="url">${d.url}</div>
+                            ${url}
                             <div class="status" style="color: ${statusColor}">${statusText}</div>
                         </div>
                     </div>`;

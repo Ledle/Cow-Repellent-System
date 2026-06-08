@@ -2,7 +2,7 @@ import logging
 from threading import Thread
 
 from util.callbacks import ZoneCallback
-from objects.detector import Detector
+from objects.detector import Detector, Detected
 from objects.source import VideoSource
 from objects.device import Device
 from objects.zone import Zone
@@ -59,12 +59,12 @@ class DetectionManager:
     def set_model(self, model):
         self.model = model
 
-    def get_source_zones(self,source: VideoSource):
+    def get_source_zones(self, source: VideoSource):
         zones = []
         for z in self._zones_source.keys():
             if self._zones_source.get(z).id is source.id:
                 zones.append(z)
-        return zones 
+        return zones
 
     def _get_detection(self, source: VideoSource) -> Detector:
         if not self._detectors.get(source.id):
@@ -116,7 +116,7 @@ class DetectionManager:
 
     def assign_device(self, device: Device, zone: Zone):
         if self._zones_devices.get(zone) is None:
-            self._zones_devices[zone]=[]
+            self._zones_devices[zone] = []
 
         self._zones_devices[zone].append(device)
         for cal in self._detector_callbacks.values():
@@ -166,11 +166,17 @@ class DetectionManager:
             "active": zone.active,
             "points": points_from_coords(zone.coords, w, h),
         }
-    def serialize_zones(self, zones: list[Zone]) -> list[dict]:
-        return [
-            self.serialize_zone(z) for z in zones
-        ]
 
+    def serialize_zones(self, zones: list[Zone]) -> list[dict]:
+        return [self.serialize_zone(z) for z in zones]
+
+    def get_last_detections(self, source: VideoSource) -> list[Detected]:
+        d = self._detectors[source.id]
+        return d.last_detections
+
+    def get_last_detected_frame(self, source: VideoSource):
+        d = self._detectors[source.id]
+        return d.last_frame
 
 
 def coords_from_points(points: list[dict], width: int, height: int) -> list[int]:

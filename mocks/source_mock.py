@@ -2,6 +2,7 @@ import logging
 import time
 
 import cv2
+from datetime import datetime
 
 import objects.source
 
@@ -13,7 +14,7 @@ class VideoSourceMock(objects.source.VideoSource):
 
     def __init__(self, source: str = "test.mp4", name: str = None):
         global i
-        if str is None:
+        if name is None:
             name = "mock" + str(i)
             i += 1
         super().__init__(source, name)
@@ -30,6 +31,7 @@ class VideoSourceMock(objects.source.VideoSource):
             with self._lock:
                 log.debug("frame set")
                 self._latest_frame = frame
+                self._frame_timestamp = datetime.now()
             if not self.ready.is_set():
                 self.ready.set()
             time.sleep(self.fps)

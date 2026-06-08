@@ -1,12 +1,12 @@
 [model]
-name = "yolo26l"
+name = "yolo26s"
 fuse = true
-test = true
+test = false
 
 [application]
 enable-web-ui = true
 enable-config-api = false
-logging-level = "info"
+logging-level = "warning"
 name = "Cow Reppelent System"
 
 [[repeller]]
@@ -30,15 +30,15 @@ type = 'test'
 camera = 'cam2'
 
 [[camera]]
-name = "cam1"
+name = "Тестовая камера"
 url = "rtmp://localhost/live/test"
 enable = true
 track = true
 test = true
 
 [[camera]]
-name = "cam2"
+name = "Реальная камера"
 url = "rtmp://localhost/live/test2"
-enable = false
-track = false
+enable = true
+track = true
  
