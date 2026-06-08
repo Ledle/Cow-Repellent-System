@@ -21,6 +21,7 @@ class ModelConfig(BaseModel):
     fuse: bool = default_config["model"]["fuse"]
     test: bool = False
     test_delay: int = Field(alias="test-delay", default=1)
+    verbose: bool = False
 
 
 class ApplicationConfig(BaseModel):

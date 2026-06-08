@@ -38,6 +38,7 @@ def model_config_handler(value: dict, app_manager: ApplicationManager):
             app_manager.detection_manager.set_model(get_model(value["name"], fuse))
         if value["test_delay"]:
             mocks.detector_mock.DELAY = value["test_delay"]
+        app_manager.detection_manager.model_verbose = value["verbose"]
 
 
 def application_config_handler(value: dict, app_manager: ApplicationManager):

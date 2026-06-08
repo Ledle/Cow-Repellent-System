@@ -59,7 +59,10 @@
             <a href="/">← На главную</a>
             <h1>Управление устройствами</h1>
         </div>
-        <button class="btn btn-primary" onclick="openModal()">+ Добавить устройство</button>
+        <div style="display: flex; gap: 10px;">
+            <a href="/settings" class="btn btn-secondary" style="text-decoration: none;">Настройки</a>
+            <button class="btn btn-primary" onclick="openModal()">+ Добавить устройство</button>
+        </div>
     </div>
 
     <table class="devices-table">
@@ -110,6 +113,7 @@
     <script>
         const API = 'http://localhost:8000/api';
         let devices = [];
+        let deviceSocket = null;
 
         async function loadDevices() {
             try {
@@ -122,6 +126,47 @@
             }
         }
 
+        function setupDevicesWebSocket() {
+            const wsUrl = 'ws://localhost:8000/ws/devices';
+            deviceSocket = new WebSocket(wsUrl);
+
+            deviceSocket.onopen = () => {
+                console.log('Devices WebSocket connected');
+            };
+
+            deviceSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'devices_init') {
+                        devices = data.devices;
+                        renderTable();
+                    } else if (data.type === 'device_update') {
+                        handleDeviceUpdate(data.device, data.action);
+                    }
+                } catch (e) { console.error('WS message error:', e); }
+            };
+
+            deviceSocket.onclose = () => {
+                console.log('Devices WebSocket disconnected, reconnecting in 3s...');
+                setTimeout(setupDevicesWebSocket, 3000);
+            };
+
+            deviceSocket.onerror = () => deviceSocket.close();
+        }
+
+        function handleDeviceUpdate(device, action) {
+            const idx = devices.findIndex(d => String(d.id) === String(device.id));
+            if (action === 'deleted') {
+                if (idx >= 0) devices.splice(idx, 1);
+            } else if (action === 'created') {
+                if (idx < 0) devices.push(device);
+            } else if (action === 'updated') {
+                if (idx >= 0) devices[idx] = device;
+                else devices.push(device);
+            }
+            renderTable();
+        }
+
         function renderTable() {
             const tbody = document.getElementById('devices-list');
             if (devices.length === 0) {
@@ -131,8 +176,8 @@
             tbody.innerHTML = devices.map(d => {
                 // Сервер может вернуть id как число или строку
                 const idDisplay = d.id !== undefined ? d.id : 'N/A';
-                const statusClass = d.enable ? 'status-on' : 'status-off';
-                const statusText = d.enable ? 'Вкл' : 'Выкл';
+                const statusClass = d.enabled ? 'status-on' : 'status-off';
+                const statusText = d.enabled ? 'Вкл' : 'Выкл';
                 
                 return `
                 <tr>
@@ -173,7 +218,7 @@
             document.getElementById('form-original-id').value = d.id;
             document.getElementById('form-name').value = d.name;
             document.getElementById('form-url').value = d.url;
-            document.getElementById('form-enable').checked = d.enable;
+            document.getElementById('form-enable').checked = d.enabled;
             document.getElementById('btn-delete').style.display = 'inline-block';
             document.getElementById('modal-title').textContent = 'Редактировать устройство';
         }
@@ -226,6 +271,9 @@
         document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
         loadDevices();
+        setupDevicesWebSocket();
+
+        window.addEventListener('beforeunload', () => { if (deviceSocket) deviceSocket.close(); });
     </script>
 </body>
 </html>

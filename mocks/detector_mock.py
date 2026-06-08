@@ -38,9 +38,7 @@ class DetectorMock(Detector):
             class_name = random.choice(self.allowed_classes)
             box = gen_box()
             detected.append(Detected(box, class_name))
-        print("setting last detections mock...")
         self.last_detections = detected
-        print("last detections: ", self.last_detections)
         stop = self.callback(detected, frame, self.source)
         if stop:
             self.running = False

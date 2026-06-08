@@ -2,6 +2,7 @@
 name = "yolo26s"
 fuse = true
 test = false
+verbose = false
 
 [application]
 enable-web-ui = true

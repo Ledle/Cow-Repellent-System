@@ -86,6 +86,7 @@
             <div>Uptime: <span id="system-uptime" class="meta-value">--</span></div>
             <div>Общий статус: <span id="system-status" class="status-badge status-connecting">Инициализация</span></div>
             <button class="btn btn-primary" onclick="openCameraModal()">+ Добавить камеру</button>
+            <a href="/settings" class="btn btn-secondary" style="text-decoration: none;">Настройки</a>
         </div>
     </header>
 
@@ -153,6 +154,7 @@
     <script>
         const API_BASE_URL = 'http://localhost:8000/api';
         const activeSockets = new Map();
+        let deviceSocket = null;
 
         async function loadSystemStatus() {
             try {
@@ -280,33 +282,82 @@
             activeSockets.set(cameraId, ws);
         }
 
+        function renderDeviceCard(d) {
+            const statusColor = d.enabled ? 'var(--success-color)' : 'var(--error-color)';
+            const statusText = d.enabled ? '🟢 Включено' : '🔴 Выключено';
+            let url = '';
+            if (d.url) url = `<div class="url">${d.url}</div>`;
+            return `
+            <div class="device-card" data-id="${d.id}">
+                <div class="device-icon">🔌</div>
+                <div class="device-info">
+                    <div class="name">${d.name}</div>
+                    ${url}
+                    <div class="status" style="color: ${statusColor}">${statusText}</div>
+                </div>
+            </div>`;
+        }
+
+        function renderGlobalDevices(devices) {
+            const container = document.getElementById('global-devices-list');
+            if (devices.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-secondary); padding: 10px;">Нет добавленных устройств. <a href="/devices" style="color: var(--accent-color);">Добавить</a></div>';
+                return;
+            }
+            container.innerHTML = devices.map(renderDeviceCard).join('');
+        }
+
         async function loadGlobalDevices() {
             try {
                 const resp = await fetch(`${API_BASE_URL}/devices`);
                 if (!resp.ok) throw new Error('Ошибка');
                 const devices = await resp.json();
-                const container = document.getElementById('global-devices-list');
-                if (devices.length === 0) {
-                    container.innerHTML = '<div style="color: var(--text-secondary); padding: 10px;">Нет добавленных устройств. <a href="/devices" style="color: var(--accent-color);">Добавить</a></div>';
-                    return;
-                }
-                container.innerHTML = devices.map(d => {
-                    const statusColor = d.enable ? 'var(--success-color)' : 'var(--error-color)';
-                    const statusText = d.enable ? '🟢 Включено' : '🔴 Выключено';
-		    url = ''
-		    if (!d.url)
-			url = `<div class="url">${d.url}</div>`
-                    return `
-                    <div class="device-card">
-                        <div class="device-icon">🔌</div>
-                        <div class="device-info">
-                            <div class="name">${d.name}</div>
-                            ${url}
-                            <div class="status" style="color: ${statusColor}">${statusText}</div>
-                        </div>
-                    </div>`;
-                }).join('');
+                renderGlobalDevices(devices);
             } catch (e) { console.error('Ошибка загрузки устройств:', e); }
+        }
+
+        function setupDevicesWebSocket() {
+            const wsUrl = 'ws://localhost:8000/ws/devices';
+            deviceSocket = new WebSocket(wsUrl);
+
+            deviceSocket.onopen = () => {
+                console.log('Devices WebSocket connected');
+            };
+
+            deviceSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'devices_init') {
+                        renderGlobalDevices(data.devices);
+                    } else if (data.type === 'device_update') {
+                        handleDeviceUpdate(data.device, data.action);
+                    }
+                } catch (e) { console.error('WS message error:', e); }
+            };
+
+            deviceSocket.onclose = () => {
+                console.log('Devices WebSocket disconnected, reconnecting in 3s...');
+                setTimeout(setupDevicesWebSocket, 3000);
+            };
+
+            deviceSocket.onerror = () => deviceSocket.close();
+        }
+
+        function handleDeviceUpdate(device, action) {
+            const container = document.getElementById('global-devices-list');
+            const existingCard = container.querySelector(`.device-card[data-id="${device.id}"]`);
+
+            if (action === 'deleted') {
+                if (existingCard) existingCard.remove();
+                return;
+            }
+
+            const cardHtml = renderDeviceCard(device);
+            if (existingCard) {
+                existingCard.outerHTML = cardHtml;
+            } else {
+                container.insertAdjacentHTML('beforeend', cardHtml);
+            }
         }
 
         async function loadAndDrawZones(cameraId) {
@@ -421,10 +472,14 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadSystemStatus();
             loadGlobalDevices();
+            setupDevicesWebSocket();
             setInterval(loadSystemStatus, 60000);
             setInterval(loadGlobalDevices, 60000);
         });
-        window.addEventListener('beforeunload', () => { activeSockets.forEach(ws => ws.close()); });
+        window.addEventListener('beforeunload', () => {
+            activeSockets.forEach(ws => ws.close());
+            if (deviceSocket) deviceSocket.close();
+        });
     </script>
 </body>
 </html>

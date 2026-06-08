@@ -33,6 +33,7 @@ class DetectionManager:
         self._detector_callbacks = dict()
         self._zones_source: dict[Zone, VideoSource] = dict()
         self._zones_devices: dict[Zone, Device] = dict()
+        self.model_verbose = False
 
     def make_detection(self, source: VideoSource, callback=ZoneCallback):
         if not self.model and not self.mock:
@@ -51,6 +52,7 @@ class DetectionManager:
                 call.callback,
                 ALLOWED_CLASSES,
             )
+            detector.verbose = self.model_verbose
             self._detectors[source.id] = detector
             self._detector_callbacks[detector] = call
             if source.enabled:

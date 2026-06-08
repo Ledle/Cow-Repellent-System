@@ -13,9 +13,7 @@ class Detected:
 
 
 class Detector:
-    def __init__(
-        self, model, video_source: VideoSource, callback, allowed_classes
-    ):
+    def __init__(self, model, video_source: VideoSource, callback, allowed_classes):
         self.source = video_source
         self._frame_generator = None
         self.last_frame = None
@@ -24,10 +22,13 @@ class Detector:
         self.allowed_classes = allowed_classes
         self.running = False
         self.model = model
+        self.verbose = False
         self.last_detections: list[Detected]
 
     def track(self, frame):
-        return self.model.track(frame, show=False, stream=True, persist=True)
+        return self.model.track(
+            frame, show=False, stream=True, persist=True, verbose=self.verbose
+        )
 
     def _start_tracking(self):
         self.source.start_reading()
@@ -55,7 +56,6 @@ class Detector:
                     ):
                         detected.append(Detected(box, class_name))
 
-            print("setting last detections...")
             self.last_detections = detected
             self.last_frame = frame
             stop = self.callback(detected, frame, self.source)

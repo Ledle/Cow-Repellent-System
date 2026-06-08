@@ -6,6 +6,7 @@ import json
 import random
 import time
 import cv2
+import toml
 import numpy as np
 from datetime import datetime
 from typing import List, Optional
@@ -16,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 from .application_manager import ApplicationManager
+from util.config import ModelConfig, ApplicationConfig
 
 
 # === PYDANTIC МОДЕЛИ (Оставлены на уровне модуля для корректной работы FastAPI) ===
@@ -31,6 +33,7 @@ class DeviceUpdate(BaseModel):
     name: Optional[str] = None
     url: Optional[str] = None
     enable: Optional[bool] = None
+    active: Optional[bool] = None
 
 
 class CameraCreate(BaseModel):
@@ -68,6 +71,11 @@ class ZoneUpdate(BaseModel):
     color: Optional[str] = None
     active: Optional[bool] = None
     linked_devices: Optional[List[str]] = None
+
+
+class SettingsUpdate(BaseModel):
+    model: Optional[dict] = None
+    application: Optional[dict] = None
 
 
 # === КЛАСС СЕРВЕРА ===
@@ -117,11 +125,14 @@ class UIServer:
 
         self.ZONES = {"cam_01": [], "cam_02": []}
         self.ACTIVE_WEBSOCKETS = {}
+        self.ACTIVE_DEVICE_WEBSOCKETS = set()
 
         # Настройка приложения
         self._setup_cors()
         self._setup_routes()
         self._load_fonts()
+
+        self.application_manager.device_manager.on_change = self._on_device_change
 
     def _setup_cors(self):
         self.app.add_middleware(
@@ -158,6 +169,14 @@ class UIServer:
             except FileNotFoundError:
                 return "<h1>zones.html не найден</h1>"
 
+        @app.get("/settings", response_class=HTMLResponse)
+        async def read_settings():
+            try:
+                with open(PARENT_DIR + "settings.html", "r", encoding="utf-8") as f:
+                    return f.read()
+            except FileNotFoundError:
+                return "<h1>settings.html не найден</h1>"
+
     def _setup_device_routes(self, app):
         # --- REST API: УСТРОЙСТВА ---
         @app.get("/api/devices")
@@ -182,6 +201,8 @@ class UIServer:
                 d.name = device.name
             if device.url is not None:
                 d.url = device.url
+            if device.active is not None:
+                manager.switch_device(device.active)
             if device.enable is not None:
                 manager.toggle_device(d, device.enable)
 
@@ -212,6 +233,55 @@ class UIServer:
                 "status": self.application_manager.get_status(),
                 "cameras": camera_list,
             }
+
+    def _setup_settings_routes(self, app):
+        @app.get("/api/settings")
+        async def get_settings():
+            config_path = os.getenv("CONFIG_FILE", "config.toml")
+            try:
+                config = toml.load(config_path)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Ошибка чтения конфига: {e}")
+            return {
+                "model": config.get("model", {}),
+                "application": config.get("application", {}),
+            }
+
+        @app.put("/api/settings")
+        async def update_settings(payload: SettingsUpdate):
+            config_path = os.getenv("CONFIG_FILE", "config.toml")
+            try:
+                existing = toml.load(config_path)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Ошибка чтения конфига: {e}")
+
+            if payload.model is not None:
+                try:
+                    validated = ModelConfig(**payload.model)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Ошибка модели: {e}")
+                existing["model"] = validated.model_dump()
+
+            if payload.application is not None:
+                try:
+                    validated = ApplicationConfig(**payload.application)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Ошибка конфигурации: {e}")
+                existing["application"] = validated.model_dump()
+
+            try:
+                with open(config_path, "w", encoding="utf-8") as f:
+                    toml.dump(existing, f)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Ошибка записи конфига: {e}")
+
+            if payload.model is not None:
+                existing["model"].pop("model_config", None)
+                self.application_manager.detection_manager.set_model(None)
+            if payload.application is not None:
+                existing["application"].pop("model_config", None)
+
+            return {"status": "ok", "model": existing.get("model"), "application": existing.get("application")}
 
     def _setup_source_routes(self, app):
         # --- REST API: КАМЕРЫ ---
@@ -300,14 +370,6 @@ class UIServer:
 
             zones = detection_manager.get_source_zones(s)
             enriched_zones = []
-            # for z in zones:
-            #    enriched = z.copy()
-            #    enriched["linked_devices_info"] = [
-            #        self.DEVICES.get(d_id)
-            #        for d_id in z["linked_devices"]
-            #        if d_id in self.DEVICES
-            #    ]
-            #    enriched_zones.append(enriched)
             return detection_manager.serialize_zones(zones)
 
         @app.post("/api/camera/{camera_id}/zone")
@@ -382,6 +444,7 @@ class UIServer:
         self._setup_source_routes(app)
         self._setup_zone_routes(app)
         self._setup_system_routes(app)
+        self._setup_settings_routes(app)
 
         # --- WEBSOCKET И КАДРЫ ---
         @app.get("/api/camera/{camera_id}/last-frame")
@@ -395,6 +458,29 @@ class UIServer:
             if not last_frame:
                 raise HTTPException(status_code=404, detail="Кадр ещё не получен")
             return {"frame": last_frame}
+
+        @app.websocket("/ws/devices")
+        async def devices_websocket(websocket: WebSocket):
+            await websocket.accept()
+            self.ACTIVE_DEVICE_WEBSOCKETS.add(websocket)
+            init_msg = json.dumps({
+                "type": "devices_init",
+                "devices": self.application_manager.device_manager.serialize_devices()
+            })
+            await websocket.send_text(init_msg)
+            try:
+                while True:
+                    await websocket.receive_text()
+            except WebSocketDisconnect:
+                print("Клиент отключился от devices websocket")
+            except Exception as e:
+                print(f"Ошибка WS devices: {e}")
+            finally:
+                self.ACTIVE_DEVICE_WEBSOCKETS.discard(websocket)
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
 
         @app.websocket("/ws/{camera_id}")
         async def websocket_endpoint(websocket: WebSocket, camera_id: str):
@@ -484,6 +570,21 @@ class UIServer:
             font_large = font_small = ImageFont.load_default()
         self._font_large = font_large
         self._font_small = font_small
+
+    def _on_device_change(self, device, state, action):
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.broadcast_device_update(state, action))
+        except RuntimeError:
+            pass
+
+    async def broadcast_device_update(self, device_data, action):
+        msg = json.dumps({"type": "device_update", "device": device_data, "action": action})
+        for ws in self.ACTIVE_DEVICE_WEBSOCKETS.copy():
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                self.ACTIVE_DEVICE_WEBSOCKETS.discard(ws)
 
     def _convert_frame(self, camera_id: str, frame: np.ndarray) -> str:
         """Конвертация cv2 кадра в base64 с поддержкой кириллицы"""
