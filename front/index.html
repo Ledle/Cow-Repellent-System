@@ -369,6 +369,7 @@
                 if (!svgEl) return;
                 svgEl.innerHTML = '';
                 zones.forEach(z => {
+		    z.color = "#00ff00"
                     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
                     poly.setAttribute('points', z.points.map(p => `${p.x},${p.y}`).join(' '));
                     poly.setAttribute('stroke', z.color);

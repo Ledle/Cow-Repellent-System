@@ -1,34 +1,22 @@
-[model]
-name = "yolo26s"
-fuse = true
-test = false
-verbose = false
-
-[application]
-enable-web-ui = true
-enable-config-api = false
-logging-level = "warning"
-name = "Cow Reppelent System"
+[[repeller]]
+name = "Левый отпугиватель test1"
+type = "test"
+camera = "cam1"
 
 [[repeller]]
-name = 'Левый отпугиватель test1'
-type = 'test'
-camera = 'cam1'
+name = "Правый отпугиватель test1"
+type = "test"
+camera = "cam1"
 
 [[repeller]]
-name = 'Правый отпугиватель test1'
-type = 'test'
-camera = 'cam1'
+name = "Левый отпугиватель test2"
+type = "test"
+camera = "cam2"
 
 [[repeller]]
-name = 'Левый отпугиватель test2'
-type = 'test'
-camera = 'cam2'
-
-[[repeller]]
-name = 'Правый отпугиватель test2'
-type = 'test'
-camera = 'cam2'
+name = "Правый отпугиватель test2"
+type = "test"
+camera = "cam2"
 
 [[camera]]
 name = "Тестовая камера"
@@ -42,4 +30,16 @@ name = "Реальная камера"
 url = "rtmp://localhost/live/test2"
 enable = true
 track = true
- 
+
+[model]
+name = "yolo26s"
+fuse = true
+test = false
+test_delay = 1
+verbose = false
+
+[application]
+enable_web_ui = true
+enable_config_api = false
+logging_level = "info"
+name = "Cow Reppelent System"

@@ -45,7 +45,7 @@ class RepellerConfig(BaseModel):
     type: str = "test"
     camera: str = ""
     url: str = ""
-    enabled: bool = False
+    enabled: bool = True
 
 
 class CameraConfig(BaseModel):

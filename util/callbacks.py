@@ -192,10 +192,12 @@ class ZoneCallback:
                 to_enable.clear()
                 break
 
-        for device in self._devices:
-            if device in to_enable:
-                device.on()
-            else:
-                device.off()
+        log.info(f"devs to enable: {to_enable}")
+        for devices in self._zone_devices.values():
+            for device in devices:
+                if device in to_enable:
+                    device.on()
+                else:
+                    device.off()
 
 
