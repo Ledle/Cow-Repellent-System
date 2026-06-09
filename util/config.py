@@ -57,6 +57,19 @@ class CameraConfig(BaseModel):
     test: bool = False
 
 
+class PointConfig(BaseModel):
+    x: float
+    y: float
+
+
+class ZoneConfig(BaseModel):
+    name: str
+    camera: str = ""
+    active: bool = True
+    points: List[PointConfig] = Field(default_factory=list)
+    linked_devices: List[str] = Field(default_factory=list)
+
+
 class Settings(BaseSettings):
     """
     Корневая конфигурация приложения.
@@ -67,6 +80,7 @@ class Settings(BaseSettings):
     application: ApplicationConfig
     repeller: Optional[List[RepellerConfig]] = Field(default_factory=list)
     camera: Optional[List[CameraConfig]] = Field(default_factory=list)
+    zone: Optional[List[ZoneConfig]] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(
         extra="forbid",  # Запретить неизвестные поля в TOML

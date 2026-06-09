@@ -6,6 +6,7 @@ from util.config_handlers import (
     model_config_handler,
     application_config_handler,
     device_config_handler,
+    zone_config_handler,
 )
 from util.config import Settings
 from managers.config_manager import AppConfigManager
@@ -30,8 +31,9 @@ callbacks = {
     "model": [handler_build(model_config_handler, app_manager)],
     "camera": [handler_build(camera_config_handler, app_manager)],
     "repeller": [handler_build(device_config_handler, app_manager)],
+    "zone": [handler_build(zone_config_handler, app_manager)],
 }
-callbacks_priority = ["application", "model", "repeller", "camera"]
+callbacks_priority = ["application", "model", "repeller", "camera", "zone"]
 
 config_manager = AppConfigManager(settings, callbacks)
 config_manager.update_all(callbacks_priority)

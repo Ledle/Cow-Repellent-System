@@ -60,5 +60,38 @@ def device_config_handler(value: dict, app_manager: ApplicationManager):
     app_manager.detection_manager.assign_device(device, value["camera"])
 
 
+def zone_config_handler(value: dict, app_manager: ApplicationManager):
+    log.debug("handling zone")
+    src_manager = app_manager.video_source_manager
+    dev_manager = app_manager.device_manager
+    det_manager = app_manager.detection_manager
+
+    camera_name = value.get("camera", "")
+    camera = None
+    for src in src_manager.sources.values():
+        if src.name == camera_name:
+            camera = src
+            break
+
+    if camera is None:
+        log.warning(f"zone '{value.get('name')}': camera '{camera_name}' not found, skipping")
+        return
+
+    linked_device_names = value.get("linked_devices", [])
+    linked_devices = []
+    for dev in dev_manager.devices.values():
+        if dev.name in linked_device_names:
+            linked_devices.append(dev)
+
+    zone_data = {
+        "name": value["name"],
+        "camera": camera,
+        "active": value.get("active", True),
+        "points": value.get("points", []),
+        "linked_devices": linked_devices,
+    }
+    det_manager.add_zone_from_dict(zone_data)
+
+
 def handler_build(handler: Callable, app_manager: ApplicationManager) -> Callable:
     return lambda x: handler(x, app_manager)
