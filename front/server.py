@@ -30,13 +30,17 @@ app.add_middleware(
 
 class DeviceCreate(BaseModel):
     name: str
-    url: str
+    type: str = "test"
+    on_url: str = ""
+    off_url: str = ""
     enable: bool = True
 
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
-    url: Optional[str] = None
+    type: Optional[str] = None
+    on_url: Optional[str] = None
+    off_url: Optional[str] = None
     enable: Optional[bool] = None
 
 
@@ -105,13 +109,17 @@ DEVICES = {
     "dev_01": {
         "id": "dev_01",
         "name": "Отпугиватель 1",
-        "url": "http://192.168.1.10/api/trigger",
+        "type": "http",
+        "on_url": "http://192.168.1.10/api/on",
+        "off_url": "http://192.168.1.10/api/off",
         "enable": True,
     },
     "dev_02": {
         "id": "dev_02",
         "name": "Отпугиватель 2",
-        "url": "http://192.168.1.11/api/trigger",
+        "type": "test",
+        "on_url": "",
+        "off_url": "",
         "enable": True,
     },
 }
@@ -185,8 +193,12 @@ async def update_device(device_id: str, device: DeviceUpdate):
     d = DEVICES[device_id]
     if device.name is not None:
         d["name"] = device.name
-    if device.url is not None:
-        d["url"] = device.url
+    if device.type is not None:
+        d["type"] = device.type
+    if device.on_url is not None:
+        d["on_url"] = device.on_url
+    if device.off_url is not None:
+        d["off_url"] = device.off_url
     if device.enable is not None:
         d["enable"] = device.enable
 

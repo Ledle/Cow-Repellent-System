@@ -14,9 +14,11 @@ type = "test"
 camera = "cam2"
 
 [[repeller]]
-name = "Правый отпугиватель test2"
-type = "test"
-camera = "cam2"
+name = "HTTP отпугиватель"
+type = "http"
+camera = "cam1"
+on_url = "http://192.168.1.20/api/on"
+off_url = "http://192.168.1.20/api/off"
 
 [[camera]]
 name = "Тестовая камера"

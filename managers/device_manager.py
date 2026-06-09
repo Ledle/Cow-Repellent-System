@@ -1,6 +1,6 @@
 import logging
 
-from objects.device import Device
+from objects.device import Device, HttpDevice
 
 log = logging.getLogger("Device")
 
@@ -18,8 +18,11 @@ class DeviceManager:
         self.enabled_devices: set[Device] = set()
         self.on_change = on_change
 
-    def make_device(self, name, url="") -> Device:
-        device = Device(name, url)
+    def make_device(self, name, type="test", on_url="", off_url="") -> Device:
+        if type == "http":
+            device = HttpDevice(name, on_url, off_url)
+        else:
+            device = Device(name)
         device.id = self._gen_dev_id()
         device.register_callback(self._on_device_active_change)
         self.devices[device.id] = device
@@ -44,18 +47,24 @@ class DeviceManager:
 
     def serialize_device(self, device: Device) -> dict:
         """Serialize a Device object to a dictionary."""
-        return {
+        result = {
             "id": str(device.id),
             "name": device.name,
-            "url": device.url,
+            "type": device.type,
             "active": device.is_active(),
-            "enabled": device in self.enabled_devices
+            "enabled": device in self.enabled_devices,
         }
+        if isinstance(device, HttpDevice):
+            result["on_url"] = device.on_url
+            result["off_url"] = device.off_url
+        return result
 
     def make_device_from_dict(self, data: dict) -> Device:
         name = data["name"]
-        url = data["url"]
-        device = self.make_device(name, url)
+        type = data.get("type", "test")
+        on_url = data.get("on_url", "")
+        off_url = data.get("off_url", "")
+        device = self.make_device(name, type, on_url, off_url)
         self._notify_change(device, "created")
         return device
 

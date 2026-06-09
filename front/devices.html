@@ -44,7 +44,7 @@
         .modal h2 { margin-top: 0; color: var(--accent-color); }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary); }
-        .form-group input[type="text"], .form-group input[type="url"] {
+        .form-group input[type="text"], .form-group input[type="url"], .form-group select {
             width: 100%; padding: 8px; background: var(--input-bg); border: 1px solid var(--border-color);
             border-radius: 4px; color: var(--text-primary); box-sizing: border-box;
         }
@@ -70,7 +70,7 @@
             <tr>
                 <th>ID</th>
                 <th>Название</th>
-                <th>URL</th>
+                <th>Тип</th>
                 <th>Состояние</th>
                 <th>Действия</th>
             </tr>
@@ -92,8 +92,19 @@
                     <input type="text" id="form-name" required placeholder="Отпугиватель перимetра">
                 </div>
                 <div class="form-group">
-                    <label>URL для активации *</label>
-                    <input type="url" id="form-url" required placeholder="http://192.168.1.10/api/trigger">
+                    <label>Тип устройства *</label>
+                    <select id="form-type" onchange="toggleUrlFields()">
+                        <option value="test">Test</option>
+                        <option value="http">HTTP</option>
+                    </select>
+                </div>
+                <div class="form-group url-field" style="display:none;">
+                    <label>URL для включения</label>
+                    <input type="url" id="form-on-url" placeholder="http://192.168.1.10/api/on">
+                </div>
+                <div class="form-group url-field" style="display:none;">
+                    <label>URL для выключения</label>
+                    <input type="url" id="form-off-url" placeholder="http://192.168.1.10/api/off">
                 </div>
                 <div class="form-group">
                     <div class="checkbox-group">
@@ -174,16 +185,16 @@
                 return;
             }
             tbody.innerHTML = devices.map(d => {
-                // Сервер может вернуть id как число или строку
                 const idDisplay = d.id !== undefined ? d.id : 'N/A';
                 const statusClass = d.enabled ? 'status-on' : 'status-off';
                 const statusText = d.enabled ? 'Вкл' : 'Выкл';
+                const typeDisplay = d.type === 'http' ? 'HTTP' : 'Test';
                 
                 return `
                 <tr>
                     <td style="font-family: monospace;">${idDisplay}</td>
                     <td>${d.name}</td>
-                    <td style="font-family: monospace; font-size: 0.85rem; color: var(--text-secondary);">${d.url}</td>
+                    <td><span class="status-badge ${d.type === 'http' ? 'status-on' : 'status-off'}">${typeDisplay}</span></td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
                         <button class="btn btn-secondary btn-small" onclick="editDevice('${d.id}')">✎</button>
@@ -198,10 +209,13 @@
             document.getElementById('form-mode').value = 'create';
             document.getElementById('form-original-id').value = '';
             document.getElementById('form-name').value = '';
-            document.getElementById('form-url').value = '';
+            document.getElementById('form-type').value = 'test';
+            document.getElementById('form-on-url').value = '';
+            document.getElementById('form-off-url').value = '';
             document.getElementById('form-enable').checked = true;
             document.getElementById('btn-delete').style.display = 'none';
             document.getElementById('modal-title').textContent = 'Добавить устройство';
+            toggleUrlFields();
         }
 
         function closeModal() {
@@ -209,7 +223,6 @@
         }
 
         function editDevice(id) {
-            // Находим устройство по id (учитываем, что id может быть числом или строкой)
             const d = devices.find(x => String(x.id) === String(id));
             if (!d) return;
             
@@ -217,20 +230,26 @@
             document.getElementById('form-mode').value = 'edit';
             document.getElementById('form-original-id').value = d.id;
             document.getElementById('form-name').value = d.name;
-            document.getElementById('form-url').value = d.url;
+            document.getElementById('form-type').value = d.type || 'test';
+            document.getElementById('form-on-url').value = d.on_url || '';
+            document.getElementById('form-off-url').value = d.off_url || '';
             document.getElementById('form-enable').checked = d.enabled;
             document.getElementById('btn-delete').style.display = 'inline-block';
             document.getElementById('modal-title').textContent = 'Редактировать устройство';
+            toggleUrlFields();
         }
 
         async function saveDevice(e) {
             e.preventDefault();
             const mode = document.getElementById('form-mode').value;
             const originalId = document.getElementById('form-original-id').value;
+            const type = document.getElementById('form-type').value;
             
             const payload = {
                 name: document.getElementById('form-name').value.trim(),
-                url: document.getElementById('form-url').value.trim(),
+                type: type,
+                on_url: document.getElementById('form-on-url').value.trim(),
+                off_url: document.getElementById('form-off-url').value.trim(),
                 enable: document.getElementById('form-enable').checked
             };
 
@@ -265,6 +284,14 @@
                 if (!resp.ok) throw new Error('Ошибка удаления');
                 loadDevices();
             } catch (e) { alert('Ошибка: ' + e.message); }
+        }
+
+        function toggleUrlFields() {
+            const type = document.getElementById('form-type').value;
+            const urlFields = document.querySelectorAll('.url-field');
+            urlFields.forEach(el => {
+                el.style.display = type === 'http' ? 'block' : 'none';
+            });
         }
 
         document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });

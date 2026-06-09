@@ -50,8 +50,13 @@ def application_config_handler(value: dict, app_manager: ApplicationManager):
 
 def device_config_handler(value: dict, app_manager: ApplicationManager):
     device_manager = app_manager.device_manager
-    device = device_manager.make_device(value["name"])
-    device_manager.toggle_device(device,value["enabled"])
+    device = device_manager.make_device(
+        value["name"],
+        type=value.get("type", "test"),
+        on_url=value.get("on_url", ""),
+        off_url=value.get("off_url", ""),
+    )
+    device_manager.toggle_device(device, value.get("enabled", True))
     app_manager.detection_manager.assign_device(device, value["camera"])
 
 
