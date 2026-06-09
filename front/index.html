@@ -285,6 +285,8 @@
         function renderDeviceCard(d) {
             const statusColor = d.enabled ? 'var(--success-color)' : 'var(--error-color)';
             const statusText = d.enabled ? '🟢 Включено' : '🔴 Выключено';
+	    const activityText = d.active ? '🟢 Активен': '🔴 Не активен';
+	    const activityColor = d.active ? 'var(--success-color)' : 'var(--error-color)';
             let url = '';
             if (d.url) url = `<div class="url">${d.url}</div>`;
             return `
@@ -294,6 +296,7 @@
                     <div class="name">${d.name}</div>
                     ${url}
                     <div class="status" style="color: ${statusColor}">${statusText}</div>
+		    <div class="status" style="color: ${statusColor}">${activityText}</div>
                 </div>
             </div>`;
         }

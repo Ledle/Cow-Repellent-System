@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 from .application_manager import ApplicationManager
 from util.config import ModelConfig, ApplicationConfig
-
+import logging
+log = logging.getLogger("UI")
 
 # === PYDANTIC МОДЕЛИ (Оставлены на уровне модуля для корректной работы FastAPI) ===
 
@@ -128,11 +129,18 @@ class UIServer:
         self.ACTIVE_DEVICE_WEBSOCKETS = set()
 
         # Настройка приложения
+        self._loop = None
         self._setup_cors()
         self._setup_routes()
         self._load_fonts()
+        self._setup_startup()
 
         self.application_manager.device_manager.on_change = self._on_device_change
+
+    def _setup_startup(self):
+        @self.app.on_event("startup")
+        async def _capture_loop():
+            self._loop = asyncio.get_running_loop()
 
     def _setup_cors(self):
         self.app.add_middleware(
@@ -572,13 +580,17 @@ class UIServer:
         self._font_small = font_small
 
     def _on_device_change(self, device, state, action):
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self.broadcast_device_update(state, action))
-        except RuntimeError:
-            pass
+        log.info("trying to send device data")
+        if self._loop is None:
+            log.warning("event loop not available yet")
+            return
+        self._loop.call_soon_threadsafe(
+            asyncio.ensure_future,
+            self.broadcast_device_update(state, action),
+        )
 
     async def broadcast_device_update(self, device_data, action):
+        log.info("sending device data")
         msg = json.dumps({"type": "device_update", "device": device_data, "action": action})
         for ws in self.ACTIVE_DEVICE_WEBSOCKETS.copy():
             try:

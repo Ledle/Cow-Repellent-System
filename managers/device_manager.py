@@ -29,6 +29,8 @@ class DeviceManager:
 
     def _on_device_active_change(self, device, state):
         if self.on_change:
+            if state["active"]:
+                log.info("dev activated!!")
             state["enabled"] = device in self.enabled_devices
             self.on_change(device, state, "updated")
 
