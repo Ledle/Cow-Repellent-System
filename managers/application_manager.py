@@ -23,6 +23,7 @@ class ApplicationManager:
         self.detection_manager = detection_manager or DetectionManager()
         self.device_manager = device_manager or DeviceManager()
         self.start_time = datetime.now()
+        self.name = "VisionGuard Application"
 
     def get_uptime(self) -> str:
         return self._time_since()
@@ -46,7 +47,7 @@ class ApplicationManager:
         Dummy method for retrieving the name of the application.
         Returns a string with the application name.
         """
-        return "VisionGuard Application"
+        return self.name
 
     def serialize(self) -> dict:
         """Serialize the entire application state to a dictionary."""

@@ -177,6 +177,12 @@ class ZoneCallback:
     def add_zone(self, zone:Zone):
         self._zone_devices[zone]=[]
 
+    def remove_zone(self, zone: Zone):
+        for z in list(self._zone_devices.keys()):
+            if z.id == zone.id:
+                del self._zone_devices[z]
+                break
+
     def add_device_to_zone(self, zone:Zone, device: Device):
         self._zone_devices[zone].append(device)
 

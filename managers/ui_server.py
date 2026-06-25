@@ -132,7 +132,6 @@ class UIServer:
             },
         }
 
-        self.ZONES = {"cam_01": [], "cam_02": []}
         self.ACTIVE_WEBSOCKETS = {}
         self.ACTIVE_DEVICE_WEBSOCKETS = set()
 
@@ -233,11 +232,7 @@ class UIServer:
             if d is None:
                 raise HTTPException(status_code=404, detail="Устройство не найдено")
 
-            for zones in self.ZONES.values():
-                for z in zones:
-                    if device_id in z["linked_devices"]:
-                        z["linked_devices"].remove(device_id)
-
+            manager.delete_device(d)
             return {"status": "deleted", "id": device_id}
 
     def _setup_system_routes(self, app):
@@ -357,8 +352,9 @@ class UIServer:
 
         @app.delete("/api/camera/{camera_id}")
         async def delete_camera(camera_id: str):
-            manager = self.application_manager.video_source_manager
-            s = manager.get_source_by_id(camera_id)
+            src_manager = self.application_manager.video_source_manager
+            detect_manager = self.application_manager.detection_manager
+            s = src_manager.get_source_by_id(camera_id)
             if s is None:
                 raise HTTPException(status_code=404, detail="Камера не найдена")
 
@@ -371,8 +367,8 @@ class UIServer:
                     pass
                 del self.ACTIVE_WEBSOCKETS[camera_id]
 
-            manager.remove_source(s)
-            self.ZONES.pop(camera_id, None)
+            detect_manager.remove_zones_for_source(s)
+            src_manager.remove_source(s)
 
             return {"status": "deleted", "id": camera_id}
 
@@ -420,40 +416,46 @@ class UIServer:
 
         @app.put("/api/zone/{zone_id}")
         async def update_zone(zone_id: str, update: ZoneUpdate):
-            for cam_id, zones in self.ZONES.items():
-                for z in zones:
-                    if z["id"] == zone_id:
-                        if update.name is not None:
-                            z["name"] = update.name
-                        if update.points is not None:
-                            if len(update.points) < 3:
-                                raise HTTPException(
-                                    status_code=400, detail="Минимум 3 точки"
-                                )
-                            z["points"] = [p.dict() for p in update.points]
-                        if update.color is not None:
-                            z["color"] = update.color
-                        if update.active is not None:
-                            z["active"] = update.active
-                        if update.linked_devices is not None:
-                            for dev_id in update.linked_devices:
-                                if dev_id not in self.DEVICES:
-                                    raise HTTPException(
-                                        status_code=400,
-                                        detail=f"Устройство {dev_id} не найдено",
-                                    )
-                            z["linked_devices"] = update.linked_devices
-                        return z
-            raise HTTPException(status_code=404, detail="Зона не найдена")
+            detect_manager = self.application_manager.detection_manager
+            dev_manager = self.application_manager.device_manager
+
+            zone = detect_manager.find_zone(zone_id)
+            if zone is None:
+                raise HTTPException(status_code=404, detail="Зона не найдена")
+
+            update_data = {}
+            if update.name is not None:
+                update_data["name"] = update.name
+            if update.points is not None:
+                if len(update.points) < 3:
+                    raise HTTPException(
+                        status_code=400, detail="Минимум 3 точки"
+                    )
+                update_data["points"] = [p.dict() for p in update.points]
+            if update.active is not None:
+                update_data["active"] = update.active
+            if update.linked_devices is not None:
+                for dev_id in update.linked_devices:
+                    dev = dev_manager.get_device_by_id(dev_id)
+                    if dev is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Устройство {dev_id} не найдено",
+                        )
+                update_data["linked_devices"] = dev_manager.get_devices_by_id(
+                    update.linked_devices
+                )
+
+            detect_manager.update_zone(zone_id, update_data)
+            return detect_manager.serialize_zone(detect_manager.find_zone(zone_id))
 
         @app.delete("/api/zone/{zone_id}")
         async def delete_zone(zone_id: str):
-            for cam_id, zones in self.ZONES.items():
-                for i, z in enumerate(zones):
-                    if z["id"] == zone_id:
-                        del self.ZONES[cam_id][i]
-                        return {"status": "deleted", "id": zone_id}
-            raise HTTPException(status_code=404, detail="Зона не найдена")
+            detect_manager = self.application_manager.detection_manager
+            zone = detect_manager.remove_zone(zone_id)
+            if zone is None:
+                raise HTTPException(status_code=404, detail="Зона не найдена")
+            return {"status": "deleted", "id": zone_id}
 
     def _setup_routes(self):
         app = self.app

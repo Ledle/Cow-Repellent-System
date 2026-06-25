@@ -116,6 +116,53 @@ class DetectionManager:
         callback.add_zone(zone)
         self._zones_source[zone] = source
 
+    def remove_zone(self, zone_id: str):
+        for zone in list(self._zones_source.keys()):
+            if zone.id == zone_id:
+                del self._zones_source[zone]
+                self._zones_devices.pop(zone, None)
+                for cal in self._detector_callbacks.values():
+                    if cal.has_zone(zone):
+                        cal.remove_zone(zone)
+                return zone
+        return None
+
+    def update_zone(self, zone_id: str, data: dict):
+        for zone in self._zones_source.keys():
+            if zone.id == zone_id:
+                if "name" in data:
+                    zone.name = data["name"]
+                if "active" in data:
+                    zone.active = data["active"]
+                if "points" in data:
+                    source = self._zones_source[zone]
+                    resolution = source.get_resolution()
+                    zone.coords = zone._get_np_array(
+                        coords_from_points(data["points"], *resolution)
+                    )
+                if "linked_devices" in data:
+                    self._zones_devices[zone] = data["linked_devices"]
+                    for cal in self._detector_callbacks.values():
+                        if cal.has_zone(zone):
+                            cal.remove_zone(zone)
+                            for d in data["linked_devices"]:
+                                cal.add_device_to_zone(zone, d)
+                return zone
+        return None
+
+    def find_zone(self, zone_id: str):
+        for zone in self._zones_source.keys():
+            if zone.id == zone_id:
+                return zone
+        return None
+
+    def remove_zones_for_source(self, source: VideoSource):
+        to_remove = [
+            z for z, s in self._zones_source.items() if s.id == source.id
+        ]
+        for zone in to_remove:
+            self.remove_zone(zone.id)
+
     def assign_device(self, device: Device, zone: Zone):
         if self._zones_devices.get(zone) is None:
             self._zones_devices[zone] = []
