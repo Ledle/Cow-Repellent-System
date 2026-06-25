@@ -18,6 +18,7 @@ def camera_config_handler(value: dict, app_manager: ApplicationManager):
 
 def get_model(name, fuse=True):
     from ultralytics import YOLO
+
     log.info("loading model...")
     model = YOLO(name)
     if fuse:
@@ -45,7 +46,7 @@ def application_config_handler(value: dict, app_manager: ApplicationManager):
     log.debug("handling app")
     setup_logging(level=log_levels[value["logging_level"]])
     app_manager.ui = value["enable_web_ui"] or False
-     
+    app_manager.name = value["name"]
 
 
 def device_config_handler(value: dict, app_manager: ApplicationManager):
@@ -74,7 +75,9 @@ def zone_config_handler(value: dict, app_manager: ApplicationManager):
             break
 
     if camera is None:
-        log.warning(f"zone '{value.get('name')}': camera '{camera_name}' not found, skipping")
+        log.warning(
+            f"zone '{value.get('name')}': camera '{camera_name}' not found, skipping"
+        )
         return
 
     linked_device_names = value.get("linked_devices", [])
